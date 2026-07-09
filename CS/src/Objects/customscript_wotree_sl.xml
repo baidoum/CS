@@ -1,0 +1,40 @@
+<suiteletscript scriptid="customscript_wotree_sl">
+  <name>WOTree - Work Order Hierarchy Suitelet</name>
+  <scriptfile>[/SuiteScripts/WOTree/wo_tree_suitelet.js]</scriptfile>
+  <description>Lists Released Work Orders grouped by createdfrom hierarchy with inline Start Date editing.</description>
+  <isinactive>F</isinactive>
+  <notifyadmins>F</notifyadmins>
+  <notifyowner>T</notifyowner>
+  <scriptcustomfields>
+    <scriptcustomfield scriptid="custscript_wo_status_released">
+      <fieldtype>TEXT</fieldtype>
+      <label>WOTree: Released Status Internal Value</label>
+      <defaultvalue>WorkOrd:B</defaultvalue>
+      <description>Internal value of the Work Order status field for "Released". Verify with wo_field_discovery_sl.js.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_wo_item_join_id">
+      <fieldtype>TEXT</fieldtype>
+      <label>WOTree: Assembly Item Search Join ID</label>
+      <defaultvalue>assemblyitem</defaultvalue>
+      <description>Search join id used to reach the assembly item's own fields from a Work Order search.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_wo_planning_cat_field">
+      <fieldtype>TEXT</fieldtype>
+      <label>WOTree: Planning Item Category Field ID</label>
+      <defaultvalue>custitem_planningitemcategory</defaultvalue>
+      <description>Field id on the Item record for "Planning Item Category". Verify with wo_field_discovery_sl.js.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_wo_page_root_size">
+      <fieldtype>INTEGER</fieldtype>
+      <label>WOTree: Root Work Orders Per Page</label>
+      <defaultvalue>50</defaultvalue>
+      <description>How many top-level (root) Work Orders to show per page.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_wo_mr_script_id">
+      <fieldtype>TEXT</fieldtype>
+      <label>WOTree: Map/Reduce Script ID</label>
+      <defaultvalue>customscript_wotree_mr</defaultvalue>
+      <description>Script id of the Map/Reduce script that applies queued Start Date changes.</description>
+    </scriptcustomfield>
+  </scriptcustomfields>
+</suiteletscript>

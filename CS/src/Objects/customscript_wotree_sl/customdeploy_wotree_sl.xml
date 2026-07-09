@@ -1,0 +1,12 @@
+<scriptdeployment scriptid="customdeploy_wotree_sl">
+  <status>RELEASED</status>
+  <title>WOTree - Work Order Hierarchy</title>
+  <isdeployed>T</isdeployed>
+  <loglevel>DEBUG</loglevel>
+  <executioncontext>
+    <executioncontextitem>WEBAPPLICATION</executioncontextitem>
+  </executioncontext>
+  <audience>
+    <allroles>T</allroles>
+  </audience>
+</scriptdeployment>

@@ -1,0 +1,12 @@
+<scriptdeployment scriptid="customdeploy_wotree_discovery_sl">
+  <status>RELEASED</status>
+  <title>WOTree - Field Discovery (Run Once)</title>
+  <isdeployed>T</isdeployed>
+  <loglevel>DEBUG</loglevel>
+  <executioncontext>
+    <executioncontextitem>WEBAPPLICATION</executioncontextitem>
+  </executioncontext>
+  <audience>
+    <allroles>T</allroles>
+  </audience>
+</scriptdeployment>

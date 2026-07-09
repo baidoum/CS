@@ -1,0 +1,16 @@
+<mapreducescript scriptid="customscript_wotree_mr">
+  <name>WOTree - Apply Start Date Changes (Map/Reduce)</name>
+  <scriptfile>[/SuiteScripts/WOTree/wo_tree_mr.js]</scriptfile>
+  <description>Applies queued Work Order Start Date changes from the WOTree Suitelet. Triggered programmatically via N/task, not on a schedule.</description>
+  <isinactive>F</isinactive>
+  <notifyadmins>F</notifyadmins>
+  <notifyonlyiffailure>F</notifyonlyiffailure>
+  <notifyowner>T</notifyowner>
+  <scriptcustomfields>
+    <scriptcustomfield scriptid="custscript_mr_staging_file_id">
+      <fieldtype>TEXT</fieldtype>
+      <label>WOTree MR: Staging File Internal ID</label>
+      <description>Set programmatically per invocation via task.create params - not intended to be edited manually.</description>
+    </scriptcustomfield>
+  </scriptcustomfields>
+</mapreducescript>

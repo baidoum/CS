@@ -1,0 +1,8 @@
+<suiteletscript scriptid="customscript_wotree_discovery_sl">
+  <name>WOTree - Field Discovery (Run Once)</name>
+  <scriptfile>[/SuiteScripts/WOTree/wo_field_discovery_sl.js]</scriptfile>
+  <description>One-time diagnostic tool - logs real field ids/status values to help correct WOTree script parameters. Read-only, safe to deactivate or delete after use.</description>
+  <isinactive>F</isinactive>
+  <notifyadmins>F</notifyadmins>
+  <notifyowner>T</notifyowner>
+</suiteletscript>
