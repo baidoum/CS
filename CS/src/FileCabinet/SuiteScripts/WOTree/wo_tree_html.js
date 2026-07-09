@@ -177,7 +177,7 @@ define([], function () {
             ':root { --ink:#16212b; --ink-grad-top:#1f2e3c; --accent:#0e7490; --accent-strong:#155e75; --accent-soft:#e3f4f8; --accent-soft-tx:#0c5566; --accent-line:#b6e2ec; --bg:#eceff3; --surface:#ffffff; --surface-2:#f5f7f9; --line:#dce2e9; --line-soft:#eaeef2; --tx:#1b2733; --tx-2:#48586a; --tx-3:#6f7d8c; --ok:#15803d; --ok-bg:#dcf3e4; --warn:#9a4216; --warn-bg:#fbe9d8; --danger:#b42318; --danger-bg:#fbe7e5; --radius:9px; --radius-sm:6px; --font:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace; }',
             '*, *::before, *::after { box-sizing:border-box; }',
             'body { margin:0; font-family:var(--font); background:var(--bg); color:var(--tx); font-size:14px; -webkit-font-smoothing:antialiased; }',
-            '.wt-app { max-width:1280px; margin:0 auto; padding:18px; }',
+            '.wt-app { width:100%; margin:0; padding:18px 24px; }',
             '.wt-header { display:flex; flex-direction:column; gap:9px; padding:16px 20px; background:var(--ink); background-image:linear-gradient(180deg,var(--ink-grad-top),var(--ink)); color:#fff; border-radius:var(--radius) var(--radius) 0 0; border-bottom:3px solid var(--accent); }',
             '.wt-title { display:flex; align-items:center; gap:13px; }',
             '.wt-logo { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; background:#fff; color:var(--accent); border-radius:10px; box-shadow:0 1px 0 rgba(255,255,255,0.2), 0 3px 10px rgba(0,0,0,0.28); flex-shrink:0; }',
