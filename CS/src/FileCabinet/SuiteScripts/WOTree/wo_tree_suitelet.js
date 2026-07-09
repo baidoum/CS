@@ -200,6 +200,7 @@ define([
             id: row.id,
             tranId: row.tranId,
             assemblyItemText: row.assemblyItemText || '',
+            assemblyItemDisplayName: row.assemblyItemDisplayName || '',
             statusText: row.statusText || '',
             quantity: row.quantity || '',
             startDate: row.startDate || '',

@@ -12,7 +12,7 @@ define(['N/search', 'N/log'], function (search, log) {
     var MAX_RESULTS_PER_SEARCH = 4000; // hard cap of search.run().each()
     var MAX_TREE_DEPTH = 25; // safety net against bad/cyclical createdfrom data
 
-    function getStandardColumns() {
+    function getStandardColumns(config) {
         return [
             search.createColumn({ name: 'internalid' }),
             search.createColumn({ name: 'tranid' }),
@@ -25,11 +25,12 @@ define(['N/search', 'N/log'], function (search, log) {
             // via wo_field_discovery_sl.js (assemblyitem errors as a search
             // column/join id in this account, item resolves).
             search.createColumn({ name: 'item' }),
+            search.createColumn({ name: 'displayname', join: config.itemJoinId }),
             search.createColumn({ name: 'quantity' })
         ];
     }
 
-    function resultToRow(result) {
+    function resultToRow(result, config) {
         return {
             id: result.getValue({ name: 'internalid' }),
             tranId: result.getValue({ name: 'tranid' }),
@@ -44,6 +45,7 @@ define(['N/search', 'N/log'], function (search, log) {
             startDate: result.getValue({ name: 'startdate' }),
             endDate: result.getValue({ name: 'enddate' }),
             assemblyItemText: result.getText({ name: 'item' }),
+            assemblyItemDisplayName: result.getValue({ name: 'displayname', join: config.itemJoinId }) || '',
             quantity: result.getValue({ name: 'quantity' })
         };
     }
@@ -84,9 +86,9 @@ define(['N/search', 'N/log'], function (search, log) {
         search.create({
             type: 'workorder',
             filters: buildRootFilters(config, filters),
-            columns: getStandardColumns()
+            columns: getStandardColumns(config)
         }).run().each(function (result) {
-            rows.push(resultToRow(result));
+            rows.push(resultToRow(result, config));
             return rows.length < MAX_RESULTS_PER_SEARCH;
         });
 
@@ -114,7 +116,7 @@ define(['N/search', 'N/log'], function (search, log) {
         var allDescendants = [];
         var currentLevelIds = rootIds.slice();
         var iterations = 0;
-        var columns = getStandardColumns();
+        var columns = getStandardColumns(config);
 
         while (currentLevelIds.length && iterations < MAX_TREE_DEPTH) {
             iterations++;
@@ -124,7 +126,7 @@ define(['N/search', 'N/log'], function (search, log) {
                 filters: [search.createFilter({ name: 'createdfrom', operator: search.Operator.ANYOF, values: currentLevelIds })],
                 columns: columns
             }).run().each(function (result) {
-                levelRows.push(resultToRow(result));
+                levelRows.push(resultToRow(result, config));
                 return levelRows.length < MAX_RESULTS_PER_SEARCH;
             });
 
