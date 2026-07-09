@@ -133,6 +133,9 @@ define([
         if (action === 'save') {
             return writeJson(context, actionSave(payload));
         }
+        if (action === 'checkStatus') {
+            return writeJson(context, actionCheckStatus(payload));
+        }
         return writeJson(context, { error: 'Unknown action: ' + action }, 400);
     }
 
@@ -251,7 +254,64 @@ define([
 
         var fileId = stageChangesFile(validated);
         var taskId = queueMapReduce(fileId, config);
-        return { queued: validated.length, dropped: droppedCount, taskId: taskId };
+        return { queued: validated.length, dropped: droppedCount, taskId: taskId, stagingFileId: fileId };
+    }
+
+    // ---- action: checkStatus -----------------------------------------------
+    // The save is queued to a Map/Reduce job (never applied synchronously),
+    // so the UI polls this after saving instead of immediately reloading the
+    // tree - reloading right away would show the still-unchanged record and
+    // look like the edit reverted.
+
+    function actionCheckStatus(payload) {
+        var taskId = payload.taskId;
+        if (!taskId) {
+            return { status: 'UNKNOWN' };
+        }
+        var status;
+        try {
+            status = task.checkStatus({ taskId: taskId });
+        } catch (e) {
+            return { status: 'UNKNOWN', error: e.message };
+        }
+
+        var result = { status: status.status };
+        if (status.status === task.TaskStatus.COMPLETE || status.status === task.TaskStatus.FAILED) {
+            var resultData = loadResultForStagingFile(payload.stagingFileId);
+            if (resultData) {
+                result.succeeded = resultData.succeeded;
+                result.failed = resultData.failed;
+                result.errors = resultData.errors;
+            }
+        }
+        return result;
+    }
+
+    function loadResultForStagingFile(stagingFileId) {
+        if (!stagingFileId) {
+            return null;
+        }
+        try {
+            var stagingFile = file.load({ id: stagingFileId });
+            var resultName = stagingFile.name.replace(/\.json$/i, '_result.json');
+            var resultFileId = null;
+            search.create({
+                type: 'file',
+                filters: [['name', 'is', resultName]],
+                columns: ['internalid']
+            }).run().each(function (result) {
+                resultFileId = result.getValue({ name: 'internalid' });
+                return false;
+            });
+            if (!resultFileId) {
+                return null;
+            }
+            var resultFile = file.load({ id: resultFileId });
+            return JSON.parse(resultFile.getContents() || '{}');
+        } catch (e) {
+            log.error('WOTree - loadResultForStagingFile failed', e.message);
+            return null;
+        }
     }
 
     function filterChangesByCurrentStatus(changes, config) {
