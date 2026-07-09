@@ -52,6 +52,11 @@ define(['N/search', 'N/log'], function (search, log) {
 
     function buildRootFilters(config, filters) {
         var f = [];
+        // Without this, a transaction search returns one row PER LINE, not
+        // one per transaction - a Work Order with 7 component lines would
+        // come back as 7 duplicate "root" rows, each spawning its own
+        // repeated copy of the whole subtree beneath it.
+        f.push(search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }));
         f.push(search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] }));
 
         if (filters.assemblyItemIds && filters.assemblyItemIds.length) {
@@ -123,7 +128,10 @@ define(['N/search', 'N/log'], function (search, log) {
             var levelRows = [];
             search.create({
                 type: 'workorder',
-                filters: [search.createFilter({ name: 'createdfrom', operator: search.Operator.ANYOF, values: currentLevelIds })],
+                filters: [
+                    search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }),
+                    search.createFilter({ name: 'createdfrom', operator: search.Operator.ANYOF, values: currentLevelIds })
+                ],
                 columns: columns
             }).run().each(function (result) {
                 levelRows.push(resultToRow(result, config));

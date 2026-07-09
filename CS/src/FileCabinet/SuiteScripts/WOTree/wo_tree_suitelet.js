@@ -208,7 +208,7 @@ define([
             endDate: row.endDate || '',
             depth: entry.depth,
             isRoot: entry.isRoot,
-            editable: row.status === config.statusReleased
+            editable: row.status === config.statusReleased || isReleasedLabel(row.statusText)
         };
     }
 
@@ -260,17 +260,31 @@ define([
         }
         var ids = changes.map(function (c) { return c.id; });
         var statusById = {};
+        var statusTextById = {};
         search.create({
             type: 'workorder',
-            filters: [['internalid', 'anyof', ids]],
+            filters: [
+                search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }),
+                search.createFilter({ name: 'internalid', operator: search.Operator.ANYOF, values: ids })
+            ],
             columns: ['internalid', 'status']
         }).run().each(function (result) {
-            statusById[result.getValue({ name: 'internalid' })] = result.getValue({ name: 'status' });
+            var id = result.getValue({ name: 'internalid' });
+            statusById[id] = result.getValue({ name: 'status' });
+            statusTextById[id] = result.getText({ name: 'status' });
             return true;
         });
         return changes.filter(function (c) {
-            return statusById[c.id] === config.statusReleased;
+            return statusById[c.id] === config.statusReleased || isReleasedLabel(statusTextById[c.id]);
         });
+    }
+
+    // The internal status key (e.g. "WorkOrd:B") has already proven fragile
+    // to guess/verify correctly; the "Released" display label is what we've
+    // actually confirmed renders correctly, so treat either match as
+    // authoritative rather than trusting the internal key alone.
+    function isReleasedLabel(text) {
+        return String(text || '').trim().toLowerCase() === 'released';
     }
 
     function stageChangesFile(validated) {
