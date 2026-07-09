@@ -7,7 +7,16 @@
  * custscript_mr_staging_file_id is set programmatically per invocation and
  * points at a JSON file of [{id, startdate}, ...] in the File Cabinet.
  */
-define(['N/record', 'N/file', 'N/format', 'N/runtime', 'N/log'], function (record, file, format, runtime, log) {
+define(['N/record', 'N/file', 'N/runtime', 'N/log'], function (record, file, runtime, log) {
+
+    // Changes arrive as ISO yyyy-mm-dd strings (from the UI's native
+    // <input type="date">). Parsed manually via local year/month/day rather
+    // than `new Date(isoString)`, which V8 treats as UTC midnight and can
+    // shift the date by one day in negative-UTC-offset timezones.
+    function parseIsoDate(iso) {
+        var parts = String(iso).split('-');
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    }
 
     function getInputData() {
         var script = runtime.getCurrentScript();
@@ -25,7 +34,7 @@ define(['N/record', 'N/file', 'N/format', 'N/runtime', 'N/log'], function (recor
     function map(context) {
         var change = JSON.parse(context.value);
         try {
-            var dateValue = format.parse({ value: change.startdate, type: format.Type.DATE });
+            var dateValue = parseIsoDate(change.startdate);
             record.submitFields({
                 type: 'workorder',
                 id: change.id,

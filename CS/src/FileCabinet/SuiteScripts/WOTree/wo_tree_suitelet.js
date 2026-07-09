@@ -1,161 +1,80 @@
 /**
  * @NApiVersion 2.1
  * @NScriptType Suitelet
+ * @NModuleScope SameAccount
  *
  * WOTree - Work Order Hierarchy Start Date Editor
+ * Suitelet entry point / JSON router (pattern: GET renders a self-contained
+ * HTML/CSS/JS page, POST is a small JSON action API the page's own vanilla
+ * JS calls via fetch - no N/ui/serverWidget forms/sublists).
  *
- * Lists Released Work Orders (as roots) together with their full createdfrom
- * sub-assembly descendant chain (WO-to-WO links only), flattened into a single
- * inline-editable sublist with a visual indent per depth level - chosen over
- * one-sublist-per-root for performance at "hundreds" of Work Orders.
+ * Architecture (3 files, same folder):
+ *   - wo_tree_suitelet.js    -> this file: entry point + JSON action router
+ *   - wo_tree_html.js        -> renders the page (CSS + vanilla JS embedded)
+ *   - lib/wo_tree_hierarchy.js, lib/wo_tree_constants.js -> search/tree logic
+ *   - wo_tree_mr.js          -> Map/Reduce that applies queued date changes
  *
- * Only rows whose status matches the configured "Released" value are
- * editable; non-Released descendants are shown read-only for context. Saves
- * are queued to a Map/Reduce script (wo_tree_mr.js) rather than applied
- * synchronously, so this stays safe regardless of how many rows changed.
- *
- * Several internal IDs below (Released status value, item search join id,
- * Planning Item Category field id) are configurable via Script Parameters
- * with best-guess defaults that have not been verified against a live
- * account. Run wo_field_discovery_sl.js once after deploying to confirm or
- * correct them - no code changes needed either way.
+ * POST actions:
+ *   - loadTree : payload {assemblyItemIds[], planningCategoryIds[],
+ *                startDateFrom, startDateTo, page} -> {rows[], totalRootCount,
+ *                totalRootPages, currentPage}
+ *   - save     : payload {changes:[{id, startdate (ISO yyyy-mm-dd)}]} ->
+ *                {queued, dropped, taskId}
  */
 define([
-    'N/ui/serverWidget',
-    'N/ui/message',
     'N/search',
     'N/file',
     'N/record',
     'N/task',
+    'N/format',
+    'N/url',
+    'N/runtime',
     'N/log',
     './lib/wo_tree_constants',
-    './lib/wo_tree_hierarchy'
-], function (serverWidget, message, search, file, record, task, log, constants, hierarchy) {
+    './lib/wo_tree_hierarchy',
+    './wo_tree_html'
+], function (search, file, record, task, format, url, runtime, log, constants, hierarchy, html) {
 
-    var SUBLIST_ID = 'custpage_wolist';
     var STAGING_FOLDER_NAME = 'WOTree Staging';
 
     function onRequest(context) {
-        var action = context.request.parameters.custpage_action;
-        if (context.request.method === 'POST' && action === 'save') {
-            handleSave(context);
-            return;
+        try {
+            if (context.request.method === 'GET') {
+                handleGet(context);
+            } else {
+                handlePost(context);
+            }
+        } catch (e) {
+            log.error('WOTree Suitelet ERROR', (e.name ? e.name + ': ' : '') + (e.message || String(e)));
+            if (context.request.method === 'POST') {
+                writeJson(context, { error: (e.name ? e.name + ': ' : '') + (e.message || String(e)) }, 500);
+            } else {
+                context.response.write('<h2>Error</h2><pre>' + escapeHtml(e.message || String(e)) + '</pre>');
+            }
         }
-        renderSearchPage(context);
     }
 
-    // ---- Page rendering ----------------------------------------------------
+    // ---- GET: render page ---------------------------------------------
 
-    function renderSearchPage(context, extra) {
-        extra = extra || {};
+    function handleGet(context) {
         var config = constants.getConfig();
-        var filters = getFiltersFromRequest(context.request);
-        var requestedPage = parseInt(context.request.parameters.custpage_page, 10) || 1;
+        var script = runtime.getCurrentScript();
+        var suiteletUrl = url.resolveScript({
+            scriptId: script.id,
+            deploymentId: script.deploymentId,
+            returnExternalUrl: false
+        });
 
-        var searchResult = runHierarchySearch(config, filters, requestedPage);
+        var page = html.renderPage({
+            suiteletUrl: suiteletUrl,
+            assemblyItems: getAssemblyItemOptions(),
+            planningCategories: getPlanningCategoryOptions(config)
+        });
 
-        var form = serverWidget.createForm({ title: 'Work Order Hierarchy - Start Date Editor' });
-        form.clientScriptModulePath = './wo_tree_client.js';
-
-        addHiddenControlFields(form, searchResult.currentPage);
-        addFilterFields(form, config, filters);
-
-        if (extra.confirmationMessage) {
-            form.addPageInitMessage({
-                type: message.Type.CONFIRMATION,
-                title: 'Save Result',
-                message: extra.confirmationMessage
-            });
-        }
-
-        addResultsSublist(form, searchResult.rows, config);
-        addPaginationInfo(form, searchResult.currentPage, searchResult.totalRootPages, searchResult.totalRootCount);
-        addActionButtons(form);
-
-        context.response.writePage(form);
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write(page);
     }
 
-    function getFiltersFromRequest(request) {
-        var params = request.parameters;
-        return {
-            assemblyItemIds: splitMultiselect(params.custpage_assembly_item),
-            planningCategoryIds: splitMultiselect(params.custpage_planning_category),
-            startDateFrom: params.custpage_date_from || '',
-            startDateTo: params.custpage_date_to || ''
-        };
-    }
-
-    function splitMultiselect(value) {
-        if (!value) {
-            return [];
-        }
-        return String(value).split(',').filter(function (v) { return v; });
-    }
-
-    function addHiddenControlFields(form, currentPage) {
-        form.addField({ id: 'custpage_action', type: serverWidget.FieldType.TEXT, label: 'Action' })
-            .updateDisplayType({ displayType: serverWidget.FieldDisplayType.HIDDEN });
-
-        var pageField = form.addField({ id: 'custpage_page', type: serverWidget.FieldType.INTEGER, label: 'Page' });
-        pageField.updateDisplayType({ displayType: serverWidget.FieldDisplayType.HIDDEN });
-        pageField.defaultValue = String(currentPage);
-
-        form.addField({ id: 'custpage_changes_json', type: serverWidget.FieldType.LONGTEXT, label: 'Changes JSON' })
-            .updateDisplayType({ displayType: serverWidget.FieldDisplayType.HIDDEN });
-    }
-
-    function addFilterFields(form, config, filters) {
-        form.addFieldGroup({ id: 'custpage_filters', label: 'Filters' });
-
-        var assemblyField = form.addField({
-            id: 'custpage_assembly_item',
-            type: serverWidget.FieldType.MULTISELECT,
-            label: 'Assembly Item',
-            container: 'custpage_filters'
-        });
-        getAssemblyItemOptions().forEach(function (opt) {
-            assemblyField.addSelectOption({ value: opt.value, text: opt.text });
-        });
-        if (filters.assemblyItemIds.length) {
-            assemblyField.defaultValue = filters.assemblyItemIds.join(',');
-        }
-
-        var categoryField = form.addField({
-            id: 'custpage_planning_category',
-            type: serverWidget.FieldType.MULTISELECT,
-            label: 'Planning Item Category',
-            container: 'custpage_filters'
-        });
-        getPlanningCategoryOptions(config).forEach(function (opt) {
-            categoryField.addSelectOption({ value: opt.value, text: opt.text });
-        });
-        if (filters.planningCategoryIds.length) {
-            categoryField.defaultValue = filters.planningCategoryIds.join(',');
-        }
-
-        var dateFromField = form.addField({
-            id: 'custpage_date_from',
-            type: serverWidget.FieldType.DATE,
-            label: 'Start Date From',
-            container: 'custpage_filters'
-        });
-        if (filters.startDateFrom) {
-            dateFromField.defaultValue = filters.startDateFrom;
-        }
-
-        var dateToField = form.addField({
-            id: 'custpage_date_to',
-            type: serverWidget.FieldType.DATE,
-            label: 'Start Date To',
-            container: 'custpage_filters'
-        });
-        if (filters.startDateTo) {
-            dateToField.defaultValue = filters.startDateTo;
-        }
-    }
-
-    // Options are discovered live from actual item data rather than assumed
-    // from a guessed "source" list id - avoids one more unverifiable internal ID.
     function getAssemblyItemOptions() {
         var options = [];
         try {
@@ -164,7 +83,7 @@ define([
                 filters: [['isinactive', 'is', 'F']],
                 columns: [search.createColumn({ name: 'itemid', sort: search.Sort.ASC })]
             }).run().each(function (result) {
-                options.push({ value: result.id, text: result.getValue({ name: 'itemid' }) });
+                options.push({ id: result.id, text: result.getValue({ name: 'itemid' }) });
                 return true;
             });
         } catch (e) {
@@ -186,7 +105,7 @@ define([
                 var text = result.getText({ name: config.planningCategoryField, summary: search.Summary.GROUP });
                 if (value && !seen[value]) {
                     seen[value] = true;
-                    options.push({ value: value, text: text || value });
+                    options.push({ id: value, text: text || value });
                 }
                 return true;
             });
@@ -196,7 +115,62 @@ define([
         return options;
     }
 
-    // ---- Hierarchy search ---------------------------------------------------
+    // ---- POST: JSON action router --------------------------------------
+
+    function handlePost(context) {
+        var req = {};
+        try {
+            req = JSON.parse(context.request.body || '{}');
+        } catch (e) {
+            return writeJson(context, { error: 'Invalid JSON body.' }, 400);
+        }
+        var action = req.action;
+        var payload = req.payload || {};
+
+        if (action === 'loadTree') {
+            return writeJson(context, actionLoadTree(payload));
+        }
+        if (action === 'save') {
+            return writeJson(context, actionSave(payload));
+        }
+        return writeJson(context, { error: 'Unknown action: ' + action }, 400);
+    }
+
+    function writeJson(context, obj, status) {
+        context.response.setHeader({ name: 'Content-Type', value: 'application/json; charset=utf-8' });
+        if (status) {
+            try { context.response.setHeader({ name: 'X-Status', value: String(status) }); } catch (e) { /* ignore */ }
+        }
+        context.response.write(JSON.stringify(obj));
+    }
+
+    function escapeHtml(s) {
+        return String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    // ---- action: loadTree -----------------------------------------------
+
+    function actionLoadTree(payload) {
+        var config = constants.getConfig();
+        var filters = {
+            assemblyItemIds: payload.assemblyItemIds || [],
+            planningCategoryIds: payload.planningCategoryIds || [],
+            startDateFrom: payload.startDateFrom || '',
+            startDateTo: payload.startDateTo || ''
+        };
+        var page = parseInt(payload.page, 10) || 1;
+        var result = runHierarchySearch(config, filters, page);
+
+        return {
+            rows: result.rows.map(function (entry) { return serializeRow(entry, config); }),
+            totalRootCount: result.totalRootCount,
+            totalRootPages: result.totalRootPages,
+            currentPage: result.currentPage
+        };
+    }
 
     function runHierarchySearch(config, filters, requestedPage) {
         var allMatches = hierarchy.fetchRootCandidates(config, filters);
@@ -220,120 +194,63 @@ define([
         };
     }
 
-    // ---- Results sublist ---------------------------------------------------
-
-    function addResultsSublist(form, rows, config) {
-        var sublist = form.addSublist({
-            id: SUBLIST_ID,
-            type: serverWidget.SublistType.INLINEEDITOR,
-            label: 'Work Orders (' + rows.length + ' row(s) on this page)'
-        });
-
-        sublist.addField({ id: 'custpage_hierarchy', type: serverWidget.FieldType.TEXT, label: 'Work Order' });
-        sublist.addField({ id: 'custpage_assemblyitem', type: serverWidget.FieldType.TEXT, label: 'Assembly Item' });
-        sublist.addField({ id: 'custpage_statustext', type: serverWidget.FieldType.TEXT, label: 'Status' });
-        sublist.addField({ id: 'custpage_quantity', type: serverWidget.FieldType.TEXT, label: 'Qty' });
-        sublist.addField({ id: 'custpage_enddate', type: serverWidget.FieldType.TEXT, label: 'End Date' });
-        sublist.addField({ id: 'custpage_startdate', type: serverWidget.FieldType.DATE, label: 'Start Date' });
-        sublist.addField({ id: 'custpage_id', type: serverWidget.FieldType.TEXT, label: 'Internal ID' });
-        sublist.addField({ id: 'custpage_editable', type: serverWidget.FieldType.TEXT, label: 'Editable' });
-
-        // custpage_startdate is intentionally left ENTRY (editable); every
-        // other column is forced to INLINE/HIDDEN so INLINEEDITOR doesn't
-        // make them editable too. sublist.addField() returns the sublist
-        // itself (for chaining), not a Field object - sublist.getField()
-        // is what actually returns the Field to call updateDisplayType() on.
-        [
-            'custpage_hierarchy', 'custpage_assemblyitem', 'custpage_statustext',
-            'custpage_quantity', 'custpage_enddate'
-        ].forEach(function (id) {
-            sublist.getField({ id: id }).updateDisplayType({ displayType: serverWidget.FieldDisplayType.INLINE });
-        });
-        ['custpage_id', 'custpage_editable'].forEach(function (id) {
-            sublist.getField({ id: id }).updateDisplayType({ displayType: serverWidget.FieldDisplayType.HIDDEN });
-        });
-
-        // NetSuite's setSublistValue treats an empty string as a *missing*
-        // argument (SSS_MISSING_REQD_ARGUMENT), not a valid blank value -
-        // skip the call entirely when there's nothing to display, leaving
-        // that cell at its (blank) default instead.
-        function setCell(fieldId, line, value) {
-            if (value === null || value === undefined || value === '') {
-                return;
-            }
-            sublist.setSublistValue({ id: fieldId, line: line, value: value });
-        }
-
-        rows.forEach(function (entry, index) {
-            var row = entry.row;
-            var isReleased = row.status === config.statusReleased;
-            setCell('custpage_hierarchy', index,
-                hierarchy.indentLabel(entry.depth) + row.tranId + (entry.isRoot ? ' (Root)' : ''));
-            setCell('custpage_assemblyitem', index, row.assemblyItemText);
-            setCell('custpage_statustext', index, row.statusText);
-            setCell('custpage_quantity', index, row.quantity);
-            setCell('custpage_enddate', index, row.endDate);
-            setCell('custpage_startdate', index, row.startDate);
-            setCell('custpage_id', index, row.id);
-            setCell('custpage_editable', index, isReleased ? 'T' : 'F');
-        });
+    function serializeRow(entry, config) {
+        var row = entry.row;
+        return {
+            id: row.id,
+            tranId: row.tranId,
+            assemblyItemText: row.assemblyItemText || '',
+            statusText: row.statusText || '',
+            quantity: row.quantity || '',
+            startDate: row.startDate || '',
+            startDateIso: toIsoDate(row.startDate),
+            endDate: row.endDate || '',
+            depth: entry.depth,
+            isRoot: entry.isRoot,
+            editable: row.status === config.statusReleased
+        };
     }
 
-    function addPaginationInfo(form, currentPage, totalPages, totalRootCount) {
-        var infoField = form.addField({ id: 'custpage_paging_info', type: serverWidget.FieldType.INLINEHTML, label: ' ' });
-        infoField.defaultValue = '<p>Page ' + currentPage + ' of ' + totalPages + ' - ' + totalRootCount +
-            ' top-level Work Order(s) match the current filters.</p>';
-
-        if (currentPage > 1) {
-            form.addButton({
-                id: 'custpage_btn_prev',
-                label: 'Previous Page',
-                functionName: "goToPage('search', " + (currentPage - 1) + ")"
-            });
+    // NetSuite search results return dates as a string formatted per the
+    // user's date preference (e.g. "7/9/2026") - convert to ISO yyyy-mm-dd
+    // for <input type="date">, whose value attribute always requires ISO
+    // regardless of locale.
+    function toIsoDate(displayValue) {
+        if (!displayValue) {
+            return '';
         }
-        if (currentPage < totalPages) {
-            form.addButton({
-                id: 'custpage_btn_next',
-                label: 'Next Page',
-                functionName: "goToPage('search', " + (currentPage + 1) + ")"
-            });
-        }
-    }
-
-    function addActionButtons(form) {
-        form.addButton({ id: 'custpage_btn_search', label: 'Search', functionName: "goToPage('search', 1)" });
-        form.addButton({ id: 'custpage_btn_save', label: 'Save Changes', functionName: 'saveChanges' });
-    }
-
-    // ---- Save handling ---------------------------------------------------
-
-    function handleSave(context) {
-        var config = constants.getConfig();
-        var changes = [];
         try {
-            changes = JSON.parse(context.request.parameters.custpage_changes_json || '[]');
+            var d = format.parse({ value: displayValue, type: format.Type.DATE });
+            var y = d.getFullYear();
+            var m = ('0' + (d.getMonth() + 1)).slice(-2);
+            var day = ('0' + d.getDate()).slice(-2);
+            return y + '-' + m + '-' + day;
         } catch (e) {
-            changes = [];
+            return '';
         }
+    }
 
-        // Never trust the client-side "editable" flag alone - status may have
-        // changed since page load, and native sublists can't fully lock a cell.
+    // ---- action: save -----------------------------------------------------
+
+    function actionSave(payload) {
+        var config = constants.getConfig();
+        var changes = (payload.changes || []).filter(function (c) {
+            return c && c.id && c.startdate;
+        });
+
+        // Never trust the client's notion of "editable" alone - status may
+        // have changed since page load, and the client can't be trusted for
+        // data integrity anyway.
         var validated = filterChangesByCurrentStatus(changes, config);
         var droppedCount = changes.length - validated.length;
-        var confirmationMessage;
 
         if (!validated.length) {
-            confirmationMessage = 'No valid changes were saved.' +
-                (droppedCount ? ' ' + droppedCount + ' row(s) were skipped because they are no longer in Released status.' : '');
-        } else {
-            var fileId = stageChangesFile(validated);
-            var taskId = queueMapReduce(fileId, config);
-            confirmationMessage = validated.length + ' start date change(s) queued for background processing (Job ID: ' + taskId + ').' +
-                (droppedCount ? ' ' + droppedCount + ' row(s) were skipped because they are no longer in Released status.' : '') +
-                ' Check Customization > Scripting > Script Deployments > Map/Reduce Status for progress.';
+            return { queued: 0, dropped: droppedCount, taskId: null };
         }
 
-        renderSearchPage(context, { confirmationMessage: confirmationMessage });
+        var fileId = stageChangesFile(validated);
+        var taskId = queueMapReduce(fileId, config);
+        return { queued: validated.length, dropped: droppedCount, taskId: taskId };
     }
 
     function filterChangesByCurrentStatus(changes, config) {
