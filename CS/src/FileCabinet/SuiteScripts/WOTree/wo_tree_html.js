@@ -68,7 +68,7 @@ define([], function () {
 '        <div class="wt-field" style="flex:2">',
 '          <label>Article assemblé</label>',
 '          <input type="text" id="wt-f-item" class="wt-input" placeholder="Tapez un code ou un nom d’article...">',
-'          <div class="wt-hint">Recherche sur le code OU le nom affiché de l’article. Filtre uniquement les ordres racines.</div>',
+'          <div class="wt-hint">Recherche sur le code OU le nom affiché de l’article, à n’importe quel niveau de la hiérarchie (racine ou composant).</div>',
 '        </div>',
 '        <div class="wt-field" style="flex:2">',
 '          <label>Catégorie de planification</label>',

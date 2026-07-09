@@ -76,10 +76,12 @@ define(['N/search', 'N/log'], function (search, log) {
         f.push(search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] }));
 
         // itemSearchText (code OR display name) is applied as a JS post-filter
-        // in fetchRootCandidates, not here - mixing search.Filter objects with
-        // a nested ['OR', ...] grouping in the same filters array is rejected
-        // by N/search ("WRONG_PARAMETER_TYPE: filters is expected as Array"),
-        // and both fields are already fetched per row anyway.
+        // in filterRootsByItemSearch, not here - it must match anywhere in a
+        // root's subtree (not just the root's own item), which a search
+        // filter on this base query can't express. Also, mixing search.Filter
+        // objects with a nested ['OR', ...] grouping in the same filters array
+        // is rejected by N/search ("WRONG_PARAMETER_TYPE: filters is expected
+        // as Array").
 
         if (filters.planningCategoryIds && filters.planningCategoryIds.length) {
             f.push(search.createFilter({
@@ -120,24 +122,54 @@ define(['N/search', 'N/log'], function (search, log) {
                 '-result cap; some matching root Work Orders may be missing. Narrow the filters or reduce the page size.');
         }
 
-        if (filters.itemSearchText) {
-            var needle = normalizeForSearch(filters.itemSearchText);
-            var beforeCount = rows.length;
-            var matched = rows.filter(function (row) {
-                return normalizeForSearch(row.assemblyItemText).indexOf(needle) !== -1 ||
-                    normalizeForSearch(row.assemblyItemDisplayName).indexOf(needle) !== -1;
-            });
-            if (!matched.length && beforeCount) {
-                log.audit('WOTree - item search debug',
-                    'needle="' + needle + '" matched 0 of ' + beforeCount + ' candidates. Sample raw values: ' +
-                    rows.slice(0, 5).map(function (r) {
-                        return '[code="' + r.assemblyItemText + '" name="' + r.assemblyItemDisplayName + '"]';
-                    }).join(' '));
+        return rows;
+    }
+
+    function rowMatchesItemSearch(row, needle) {
+        return normalizeForSearch(row.assemblyItemText).indexOf(needle) !== -1 ||
+            normalizeForSearch(row.assemblyItemDisplayName).indexOf(needle) !== -1;
+    }
+
+    // A typed item search must match anywhere in a root's subtree - not just
+    // the root's own assembly item - since users have no way to know whether
+    // a given item happens to be a root's own item or a sub-assembly's
+    // component several levels down. Fetches the FULL descendant tree for
+    // every candidate root (not just the current page) to check this before
+    // pagination narrows the set.
+    function filterRootsByItemSearch(config, roots, itemSearchText) {
+        if (!itemSearchText) {
+            return roots;
+        }
+        var needle = normalizeForSearch(itemSearchText);
+        var rootIds = roots.map(function (r) { return r.id; });
+        var allDescendants = fetchDescendants(rootIds, config);
+        var tree = buildTree(roots, allDescendants);
+
+        var matchingRoots = roots.filter(function (root) {
+            var stack = [root.id];
+            while (stack.length) {
+                var id = stack.pop();
+                var row = tree.idToRow[id];
+                if (row && rowMatchesItemSearch(row, needle)) {
+                    return true;
+                }
+                var children = tree.childrenMap[id] || [];
+                for (var i = 0; i < children.length; i++) {
+                    stack.push(children[i]);
+                }
             }
-            rows = matched;
+            return false;
+        });
+
+        if (!matchingRoots.length && roots.length) {
+            log.audit('WOTree - item search debug',
+                'needle="' + needle + '" matched 0 of ' + roots.length + ' root subtree(s). Sample raw values: ' +
+                roots.slice(0, 5).map(function (r) {
+                    return '[code="' + r.assemblyItemText + '" name="' + r.assemblyItemDisplayName + '"]';
+                }).join(' '));
         }
 
-        return rows;
+        return matchingRoots;
     }
 
     // A row is a "root" if it has no createdfrom, or createdfrom points to
@@ -253,6 +285,7 @@ define(['N/search', 'N/log'], function (search, log) {
         fetchDescendants: fetchDescendants,
         buildTree: buildTree,
         flattenDepthFirst: flattenDepthFirst,
+        filterRootsByItemSearch: filterRootsByItemSearch,
         isRoot: isRoot,
         indentLabel: indentLabel
     };

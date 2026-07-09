@@ -200,7 +200,13 @@ define([
 
     function runHierarchySearch(config, filters, requestedPage, sortField, sortDir) {
         var allMatches = hierarchy.fetchRootCandidates(config, filters);
-        var roots = sortRoots(allMatches.filter(hierarchy.isRoot), sortField, sortDir);
+        var candidateRoots = allMatches.filter(hierarchy.isRoot);
+        // Matches anywhere in a root's subtree (not just the root's own
+        // item) - a typed item could be the root's own assembly item, or a
+        // sub-assembly component several levels down, and the user has no
+        // way to know which before searching.
+        var itemFilteredRoots = hierarchy.filterRootsByItemSearch(config, candidateRoots, filters.itemSearchText);
+        var roots = sortRoots(itemFilteredRoots, sortField, sortDir);
 
         var pageSize = config.pageRootSize > 0 ? config.pageRootSize : 50;
         var totalRootPages = Math.max(1, Math.ceil(roots.length / pageSize));
