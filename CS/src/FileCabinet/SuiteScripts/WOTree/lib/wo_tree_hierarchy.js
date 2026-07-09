@@ -59,15 +59,11 @@ define(['N/search', 'N/log'], function (search, log) {
         f.push(search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }));
         f.push(search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] }));
 
-        if (filters.itemSearchText) {
-            // Combined code-or-name search: matches if the typed text is
-            // found in EITHER the item code or the item display name.
-            f.push([
-                search.createFilter({ name: 'itemid', join: config.itemJoinId, operator: search.Operator.CONTAINS, values: filters.itemSearchText }),
-                'OR',
-                search.createFilter({ name: 'displayname', join: config.itemJoinId, operator: search.Operator.CONTAINS, values: filters.itemSearchText })
-            ]);
-        }
+        // itemSearchText (code OR display name) is applied as a JS post-filter
+        // in fetchRootCandidates, not here - mixing search.Filter objects with
+        // a nested ['OR', ...] grouping in the same filters array is rejected
+        // by N/search ("WRONG_PARAMETER_TYPE: filters is expected as Array"),
+        // and both fields are already fetched per row anyway.
 
         if (filters.planningCategoryIds && filters.planningCategoryIds.length) {
             f.push(search.createFilter({
@@ -106,6 +102,14 @@ define(['N/search', 'N/log'], function (search, log) {
         if (rows.length >= MAX_RESULTS_PER_SEARCH) {
             log.audit('WOTree', 'Root candidate search hit the ' + MAX_RESULTS_PER_SEARCH +
                 '-result cap; some matching root Work Orders may be missing. Narrow the filters or reduce the page size.');
+        }
+
+        if (filters.itemSearchText) {
+            var needle = filters.itemSearchText.toLowerCase();
+            rows = rows.filter(function (row) {
+                return (row.assemblyItemText || '').toLowerCase().indexOf(needle) !== -1 ||
+                    (row.assemblyItemDisplayName || '').toLowerCase().indexOf(needle) !== -1;
+            });
         }
 
         return rows;
