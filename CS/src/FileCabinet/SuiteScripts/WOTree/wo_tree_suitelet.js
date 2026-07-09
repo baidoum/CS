@@ -15,11 +15,17 @@
  *   - wo_tree_mr.js          -> Map/Reduce that applies queued date changes
  *
  * POST actions:
- *   - loadTree : payload {assemblyItemIds[], planningCategoryIds[],
- *                startDateFrom, startDateTo, page} -> {rows[], totalRootCount,
- *                totalRootPages, currentPage}
- *   - save     : payload {changes:[{id, startdate (ISO yyyy-mm-dd)}]} ->
- *                {queued, dropped, taskId}
+ *   - loadTree           : payload {itemSearchText, planningCategoryIds[],
+ *                          startDateFrom, startDateTo, page, sortField,
+ *                          sortDir} -> {rows[], totalRootCount,
+ *                          totalRootPages, currentPage}
+ *   - save               : payload {changes:[{id, startdate (ISO yyyy-mm-dd)}]}
+ *                          -> {queued, dropped, taskId, stagingFileId}
+ *   - checkStatus        : payload {taskId, stagingFileId} -> {status, ...}
+ *   - searchItems        : payload {q} -> {items:[{id,itemid,displayname}]}
+ *   - loadQuantityByWeek : payload {itemIds[]} -> {weeks:[{weekStart,
+ *                          values:{itemId:qty}}], items:[{id,itemid,
+ *                          displayname}]}
  */
 define([
     'N/search',
@@ -117,6 +123,12 @@ define([
         }
         if (action === 'checkStatus') {
             return writeJson(context, actionCheckStatus(payload));
+        }
+        if (action === 'searchItems') {
+            return writeJson(context, actionSearchItems(payload));
+        }
+        if (action === 'loadQuantityByWeek') {
+            return writeJson(context, actionLoadQuantityByWeek(payload));
         }
         return writeJson(context, { error: 'Unknown action: ' + action }, 400);
     }
@@ -414,6 +426,131 @@ define([
             }
         });
         return mrTask.submit();
+    }
+
+    // ---- action: searchItems (autocomplete for the Quantity by Week tab) --
+
+    function actionSearchItems(payload) {
+        var q = (payload.q || '').trim();
+        if (q.length < 2) {
+            return { items: [] };
+        }
+        var words = hierarchy.normalizeForSearch(q).split(' ').filter(function (w) { return w; }).slice(0, 6);
+        var results = [];
+        // Fetched broadly (isinactive=F only) and matched in JS rather than
+        // via N/search CONTAINS/AND filter expressions - the same class of
+        // filter-expression fragility already hit twice building this tool.
+        search.create({
+            type: search.Type.ITEM,
+            filters: [['isinactive', 'is', 'F']],
+            columns: ['internalid', 'itemid', 'displayname']
+        }).run().each(function (result) {
+            var itemid = result.getValue({ name: 'itemid' }) || '';
+            var displayname = result.getValue({ name: 'displayname' }) || '';
+            var haystack = hierarchy.normalizeForSearch(itemid + ' ' + displayname);
+            var matchesAll = words.every(function (w) { return haystack.indexOf(w) !== -1; });
+            if (matchesAll) {
+                results.push({ id: result.getValue({ name: 'internalid' }), itemid: itemid, displayname: displayname });
+            }
+            return results.length < 50;
+        });
+        return { items: results };
+    }
+
+    // ---- action: loadQuantityByWeek ---------------------------------------
+
+    function actionLoadQuantityByWeek(payload) {
+        var config = constants.getConfig();
+        var itemIds = (payload.itemIds || []).filter(function (id) { return id; });
+        if (!itemIds.length) {
+            return { weeks: [], items: [] };
+        }
+
+        var itemMeta = getItemMeta(itemIds);
+        var rawRows = hierarchy.fetchQuantityRows(config, itemIds);
+
+        var totalsByWeek = {}; // weekStartIso -> itemId -> qty
+        var weekDateByIso = {}; // weekStartIso -> Date
+
+        rawRows.forEach(function (row) {
+            var d = parseDisplayDate(row.startDate);
+            if (!d) {
+                return;
+            }
+            var weekStart = getWeekStart(d);
+            var weekIso = formatIsoDate(weekStart);
+            if (!totalsByWeek[weekIso]) {
+                totalsByWeek[weekIso] = {};
+                weekDateByIso[weekIso] = weekStart;
+            }
+            totalsByWeek[weekIso][row.itemId] = (totalsByWeek[weekIso][row.itemId] || 0) + (parseFloat(row.quantity) || 0);
+        });
+
+        var isos = Object.keys(weekDateByIso).sort();
+        var weeks = [];
+        if (isos.length) {
+            var cursor = weekDateByIso[isos[0]];
+            var last = weekDateByIso[isos[isos.length - 1]];
+            while (cursor.getTime() <= last.getTime()) {
+                var weekIso = formatIsoDate(cursor);
+                var rowTotals = totalsByWeek[weekIso] || {};
+                var values = {};
+                itemIds.forEach(function (id) { values[id] = rowTotals[id] || 0; });
+                weeks.push({ weekStart: weekIso, values: values });
+                cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 7);
+            }
+        }
+
+        return {
+            weeks: weeks,
+            items: itemIds.map(function (id) {
+                return itemMeta[id] || { id: id, itemid: '?', displayname: '' };
+            })
+        };
+    }
+
+    function getItemMeta(itemIds) {
+        var meta = {};
+        search.create({
+            type: search.Type.ITEM,
+            filters: [['internalid', 'anyof', itemIds]],
+            columns: ['itemid', 'displayname']
+        }).run().each(function (result) {
+            meta[result.id] = {
+                id: result.id,
+                itemid: result.getValue({ name: 'itemid' }) || '',
+                displayname: result.getValue({ name: 'displayname' }) || ''
+            };
+            return true;
+        });
+        return meta;
+    }
+
+    function parseDisplayDate(displayValue) {
+        if (!displayValue) {
+            return null;
+        }
+        try {
+            return format.parse({ value: displayValue, type: format.Type.DATE });
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Monday of the week containing the given date (French/European
+    // convention), at local midnight.
+    function getWeekStart(date) {
+        var d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        var day = d.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+        var diff = day === 0 ? -6 : 1 - day;
+        d.setDate(d.getDate() + diff);
+        return d;
+    }
+
+    function formatIsoDate(d) {
+        var m = ('0' + (d.getMonth() + 1)).slice(-2);
+        var day = ('0' + d.getDate()).slice(-2);
+        return d.getFullYear() + '-' + m + '-' + day;
     }
 
     return { onRequest: onRequest };

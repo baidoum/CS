@@ -103,6 +103,35 @@ define(['N/search', 'N/log'], function (search, log) {
         return f;
     }
 
+    // Fetches {itemId, startDate, quantity} for every Released Work Order
+    // whose assembly item is one of itemIds - the raw data behind the
+    // Quantity by Week view. Filtering by internal id on 'item' directly
+    // needs no join (unlike filtering by a field ON the joined item record).
+    function fetchQuantityRows(config, itemIds) {
+        var rows = [];
+        search.create({
+            type: 'workorder',
+            filters: [
+                search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }),
+                search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] }),
+                search.createFilter({ name: 'item', operator: search.Operator.ANYOF, values: itemIds })
+            ],
+            columns: [
+                search.createColumn({ name: 'item' }),
+                search.createColumn({ name: 'startdate' }),
+                search.createColumn({ name: 'quantity' })
+            ]
+        }).run().each(function (result) {
+            rows.push({
+                itemId: result.getValue({ name: 'item' }),
+                startDate: result.getValue({ name: 'startdate' }),
+                quantity: result.getValue({ name: 'quantity' })
+            });
+            return rows.length < MAX_RESULTS_PER_SEARCH;
+        });
+        return rows;
+    }
+
     // Fetches every Released Work Order matching the given filters. This is
     // the candidate pool for ROOTS - callers must still post-filter with
     // isRoot() since "matches the filters" and "is a root" are independent.
@@ -283,10 +312,12 @@ define(['N/search', 'N/log'], function (search, log) {
     return {
         fetchRootCandidates: fetchRootCandidates,
         fetchDescendants: fetchDescendants,
+        fetchQuantityRows: fetchQuantityRows,
         buildTree: buildTree,
         flattenDepthFirst: flattenDepthFirst,
         filterRootsByItemSearch: filterRootsByItemSearch,
         isRoot: isRoot,
-        indentLabel: indentLabel
+        indentLabel: indentLabel,
+        normalizeForSearch: normalizeForSearch
     };
 });
