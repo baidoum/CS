@@ -67,29 +67,11 @@ define([
 
         var page = html.renderPage({
             suiteletUrl: suiteletUrl,
-            assemblyItems: getAssemblyItemOptions(),
             planningCategories: getPlanningCategoryOptions(config)
         });
 
         context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
         context.response.write(page);
-    }
-
-    function getAssemblyItemOptions() {
-        var options = [];
-        try {
-            search.create({
-                type: search.Type.ASSEMBLY_ITEM,
-                filters: [['isinactive', 'is', 'F']],
-                columns: [search.createColumn({ name: 'itemid', sort: search.Sort.ASC })]
-            }).run().each(function (result) {
-                options.push({ id: result.id, text: result.getValue({ name: 'itemid' }) });
-                return true;
-            });
-        } catch (e) {
-            log.error('WOTree - getAssemblyItemOptions failed', e.message);
-        }
-        return options;
     }
 
     function getPlanningCategoryOptions(config) {
@@ -159,13 +141,13 @@ define([
     function actionLoadTree(payload) {
         var config = constants.getConfig();
         var filters = {
-            assemblyItemIds: payload.assemblyItemIds || [],
+            itemSearchText: (payload.itemSearchText || '').trim(),
             planningCategoryIds: payload.planningCategoryIds || [],
             startDateFrom: payload.startDateFrom || '',
             startDateTo: payload.startDateTo || ''
         };
         var page = parseInt(payload.page, 10) || 1;
-        var result = runHierarchySearch(config, filters, page);
+        var result = runHierarchySearch(config, filters, page, payload.sortField, payload.sortDir);
 
         return {
             rows: result.rows.map(function (entry) { return serializeRow(entry, config); }),
@@ -175,9 +157,50 @@ define([
         };
     }
 
-    function runHierarchySearch(config, filters, requestedPage) {
+    // Sorting applies to the ROOT groups only - each root's descendants
+    // stay attached directly beneath it in their existing depth-first order,
+    // since resorting them independently would break the tree indentation.
+    function sortRoots(roots, sortField, sortDir) {
+        if (!sortField) {
+            return roots;
+        }
+        var dir = sortDir === 'desc' ? -1 : 1;
+        return roots.slice().sort(function (a, b) {
+            var av = getSortValue(a, sortField);
+            var bv = getSortValue(b, sortField);
+            if (av < bv) return -1 * dir;
+            if (av > bv) return 1 * dir;
+            return 0;
+        });
+    }
+
+    function getSortValue(row, field) {
+        switch (field) {
+            case 'assemblyItemText': return (row.assemblyItemText || '').toLowerCase();
+            case 'assemblyItemDisplayName': return (row.assemblyItemDisplayName || '').toLowerCase();
+            case 'statusText': return (row.statusText || '').toLowerCase();
+            case 'quantity': return parseFloat(row.quantity) || 0;
+            case 'startDate': return parseDateForSort(row.startDate);
+            case 'endDate': return parseDateForSort(row.endDate);
+            case 'tranId':
+            default: return (row.tranId || '').toLowerCase();
+        }
+    }
+
+    function parseDateForSort(displayValue) {
+        if (!displayValue) {
+            return 0;
+        }
+        try {
+            return format.parse({ value: displayValue, type: format.Type.DATE }).getTime();
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function runHierarchySearch(config, filters, requestedPage, sortField, sortDir) {
         var allMatches = hierarchy.fetchRootCandidates(config, filters);
-        var roots = allMatches.filter(hierarchy.isRoot);
+        var roots = sortRoots(allMatches.filter(hierarchy.isRoot), sortField, sortDir);
 
         var pageSize = config.pageRootSize > 0 ? config.pageRootSize : 50;
         var totalRootPages = Math.max(1, Math.ceil(roots.length / pageSize));

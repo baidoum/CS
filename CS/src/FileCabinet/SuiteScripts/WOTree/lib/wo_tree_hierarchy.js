@@ -59,8 +59,14 @@ define(['N/search', 'N/log'], function (search, log) {
         f.push(search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }));
         f.push(search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] }));
 
-        if (filters.assemblyItemIds && filters.assemblyItemIds.length) {
-            f.push(search.createFilter({ name: 'item', operator: search.Operator.ANYOF, values: filters.assemblyItemIds }));
+        if (filters.itemSearchText) {
+            // Combined code-or-name search: matches if the typed text is
+            // found in EITHER the item code or the item display name.
+            f.push([
+                search.createFilter({ name: 'itemid', join: config.itemJoinId, operator: search.Operator.CONTAINS, values: filters.itemSearchText }),
+                'OR',
+                search.createFilter({ name: 'displayname', join: config.itemJoinId, operator: search.Operator.CONTAINS, values: filters.itemSearchText })
+            ]);
         }
 
         if (filters.planningCategoryIds && filters.planningCategoryIds.length) {
