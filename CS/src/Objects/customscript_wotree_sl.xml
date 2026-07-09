@@ -15,14 +15,14 @@
     <scriptcustomfield scriptid="custscript_wo_item_join_id">
       <fieldtype>TEXT</fieldtype>
       <label>WOTree: Assembly Item Search Join ID</label>
-      <defaultvalue>assemblyitem</defaultvalue>
-      <description>Search join id used to reach the assembly item's own fields from a Work Order search.</description>
+      <defaultvalue>item</defaultvalue>
+      <description>Search join id used to reach the assembly item's own fields from a Work Order search. Confirmed via wo_field_discovery_sl.js - "assemblyitem" fails as a join id in this account, "item" resolves.</description>
     </scriptcustomfield>
     <scriptcustomfield scriptid="custscript_wo_planning_cat_field">
       <fieldtype>TEXT</fieldtype>
       <label>WOTree: Planning Item Category Field ID</label>
-      <defaultvalue>custitem_planningitemcategory</defaultvalue>
-      <description>Field id on the Item record for "Planning Item Category". Verify with wo_field_discovery_sl.js.</description>
+      <defaultvalue>planningitemcategory</defaultvalue>
+      <description>Standard field id on the Item record for "Planning Item Category" (no custitem_ prefix - it's a standard field, not custom). Verify with wo_field_discovery_sl.js.</description>
     </scriptcustomfield>
     <scriptcustomfield scriptid="custscript_wo_page_root_size">
       <fieldtype>INTEGER</fieldtype>

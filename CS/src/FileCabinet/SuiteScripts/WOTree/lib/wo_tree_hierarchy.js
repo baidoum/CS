@@ -20,7 +20,11 @@ define(['N/search', 'N/log'], function (search, log) {
             search.createColumn({ name: 'status' }),
             search.createColumn({ name: 'startdate' }),
             search.createColumn({ name: 'enddate' }),
-            search.createColumn({ name: 'assemblyitem' }),
+            // The record-level body field is "assemblyitem", but on a
+            // workorder SEARCH the same data is exposed as "item" - confirmed
+            // via wo_field_discovery_sl.js (assemblyitem errors as a search
+            // column/join id in this account, item resolves).
+            search.createColumn({ name: 'item' }),
             search.createColumn({ name: 'quantity' })
         ];
     }
@@ -39,7 +43,7 @@ define(['N/search', 'N/log'], function (search, log) {
             statusText: result.getText({ name: 'status' }),
             startDate: result.getValue({ name: 'startdate' }),
             endDate: result.getValue({ name: 'enddate' }),
-            assemblyItemText: result.getText({ name: 'assemblyitem' }),
+            assemblyItemText: result.getText({ name: 'item' }),
             quantity: result.getValue({ name: 'quantity' })
         };
     }
@@ -49,7 +53,7 @@ define(['N/search', 'N/log'], function (search, log) {
         f.push(search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] }));
 
         if (filters.assemblyItemIds && filters.assemblyItemIds.length) {
-            f.push(search.createFilter({ name: 'assemblyitem', operator: search.Operator.ANYOF, values: filters.assemblyItemIds }));
+            f.push(search.createFilter({ name: 'item', operator: search.Operator.ANYOF, values: filters.assemblyItemIds }));
         }
 
         if (filters.planningCategoryIds && filters.planningCategoryIds.length) {

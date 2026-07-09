@@ -87,12 +87,15 @@ define(['N/ui/serverWidget', 'N/record', 'N/search', 'N/log'], function (serverW
 
     function logSampleItemPlanningFields() {
         try {
-            var itemId = findMostRecentId('item');
+            // N/record does not accept the generic 'item' type used by N/search -
+            // it requires a specific item subtype. Assembly Item is what WOs
+            // actually reference, so sample one of those specifically.
+            var itemId = findMostRecentId(search.Type.ASSEMBLY_ITEM);
             if (!itemId) {
-                log.audit('WOTree Discovery - Item', 'No Item records found in this account.');
+                log.audit('WOTree Discovery - Item', 'No Assembly Item records found in this account.');
                 return;
             }
-            var item = record.load({ type: 'item', id: itemId });
+            var item = record.load({ type: search.Type.ASSEMBLY_ITEM, id: itemId });
             var planningFields = item.getFields().filter(function (id) {
                 var lower = id.toLowerCase();
                 return lower.indexOf('planning') !== -1 || lower.indexOf('category') !== -1;

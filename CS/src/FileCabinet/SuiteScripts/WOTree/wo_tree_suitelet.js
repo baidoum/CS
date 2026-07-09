@@ -240,15 +240,17 @@ define([
 
         // custpage_startdate is intentionally left ENTRY (editable); every
         // other column is forced to INLINE/HIDDEN so INLINEEDITOR doesn't
-        // make them editable too.
+        // make them editable too. sublist.addField() returns the sublist
+        // itself (for chaining), not a Field object - sublist.getField()
+        // is what actually returns the Field to call updateDisplayType() on.
         [
             'custpage_hierarchy', 'custpage_assemblyitem', 'custpage_statustext',
             'custpage_quantity', 'custpage_enddate'
         ].forEach(function (id) {
-            sublist.updateDisplayType({ id: id, displayType: serverWidget.FieldDisplayType.INLINE });
+            sublist.getField({ id: id }).updateDisplayType({ displayType: serverWidget.FieldDisplayType.INLINE });
         });
         ['custpage_id', 'custpage_editable'].forEach(function (id) {
-            sublist.updateDisplayType({ id: id, displayType: serverWidget.FieldDisplayType.HIDDEN });
+            sublist.getField({ id: id }).updateDisplayType({ displayType: serverWidget.FieldDisplayType.HIDDEN });
         });
 
         rows.forEach(function (entry, index) {

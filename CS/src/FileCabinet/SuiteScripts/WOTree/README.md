@@ -10,19 +10,18 @@ See files in this folder:
 - `wo_field_discovery_sl.js` - one-time diagnostic tool (see step 3 below)
 - `lib/wo_tree_constants.js`, `lib/wo_tree_hierarchy.js` - shared modules
 
-## I have not verified this against a live NetSuite account
+## Verified against the live account (as of the Field Discovery run)
 
-I built and self-reviewed this code, but I don't have credentials to deploy
-or run it against your account. A handful of internal IDs are best-guess
-defaults, exposed as Script Parameters so they can be corrected **without
-any code changes**:
+I built and self-reviewed this code without live account access. The
+Field Discovery script has since been run once and confirmed/corrected the
+defaults below - see the table's Status column.
 
-| Parameter | Default | What it is |
-|---|---|---|
-| `custscript_wo_status_released` | `WorkOrd:B` | Internal value of the Work Order `status` field for "Released" |
-| `custscript_wo_item_join_id` | `assemblyitem` | Search join id from Work Order to its assembly item's fields |
-| `custscript_wo_planning_cat_field` | `custitem_planningitemcategory` | Field id on Item for "Planning Item Category" |
-| `custscript_wo_page_root_size` | `50` | How many top-level Work Orders to show per page |
+| Parameter | Default | Status | What it is |
+|---|---|---|---|
+| `custscript_wo_status_released` | `WorkOrd:B` | **Confirmed correct** | Internal value of the Work Order `status` field for "Released" |
+| `custscript_wo_item_join_id` | `item` | **Corrected** (was `assemblyitem`, which fails as a join id in this account) | Search join id from Work Order to its assembly item's fields |
+| `custscript_wo_planning_cat_field` | `planningitemcategory` | **Corrected** (was wrongly guessed as `custitem_planningitemcategory` - it's a standard field, so no `custitem_` prefix) - confirm exact casing via Field Discovery | Field id on Item for "Planning Item Category" |
+| `custscript_wo_page_root_size` | `50` | Not applicable to discovery | How many top-level Work Orders to show per page |
 | `custscript_wo_mr_script_id` | `customscript_wotree_mr` | Script id of the Map/Reduce job |
 
 If any default is wrong, the Suitelet will still load but will show 0 (or

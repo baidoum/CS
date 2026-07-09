@@ -25,9 +25,9 @@ define(['N/runtime'], function (runtime) {
             statusReleased: getParam('custscript_wo_status_released', 'WorkOrd:B'),
             // Search join id used to reach the assembly item's own fields from a
             // Work Order search (e.g. to filter by Planning Item Category).
-            itemJoinId: getParam('custscript_wo_item_join_id', 'assemblyitem'),
+            itemJoinId: getParam('custscript_wo_item_join_id', 'item'),
             // Field id on the Item record for "Planning Item Category".
-            planningCategoryField: getParam('custscript_wo_planning_cat_field', 'custitem_planningitemcategory'),
+            planningCategoryField: getParam('custscript_wo_planning_cat_field', 'planningitemcategory'),
             // How many top-level (root) Work Orders to show per page.
             pageRootSize: parseInt(getParam('custscript_wo_page_root_size', '50'), 10),
             // Script id of the Map/Reduce script that applies queued date changes.
