@@ -429,28 +429,47 @@ define([
     }
 
     // ---- action: searchItems (autocomplete for the Quantity by Week tab) --
+    //
+    // Scoped to assembly items that actually appear on a Released Work
+    // Order - not the whole item catalog. Two reasons: (1) most items in a
+    // catalog are never built via a WO (raw materials, services, ...), so
+    // catalog-wide search surfaced mostly irrelevant suggestions; (2) an
+    // item that was marked inactive after its Work Orders were created
+    // would silently vanish from an isinactive=F catalog search even
+    // though it still has real Released Work Orders - this way, the WO's
+    // own history defines relevance, not the item's current active flag.
 
     function actionSearchItems(payload) {
+        var config = constants.getConfig();
         var q = (payload.q || '').trim();
         if (q.length < 2) {
             return { items: [] };
         }
         var words = hierarchy.normalizeForSearch(q).split(' ').filter(function (w) { return w; }).slice(0, 6);
+        var seen = {};
         var results = [];
-        // Fetched broadly (isinactive=F only) and matched in JS rather than
-        // via N/search CONTAINS/AND filter expressions - the same class of
-        // filter-expression fragility already hit twice building this tool.
         search.create({
-            type: search.Type.ITEM,
-            filters: [['isinactive', 'is', 'F']],
-            columns: ['internalid', 'itemid', 'displayname']
+            type: 'workorder',
+            filters: [
+                search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }),
+                search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.statusReleased] })
+            ],
+            columns: [
+                search.createColumn({ name: 'item' }),
+                search.createColumn({ name: 'displayname', join: config.itemJoinId })
+            ]
         }).run().each(function (result) {
-            var itemid = result.getValue({ name: 'itemid' }) || '';
-            var displayname = result.getValue({ name: 'displayname' }) || '';
+            var id = result.getValue({ name: 'item' });
+            if (!id || seen[id]) {
+                return true;
+            }
+            var itemid = result.getText({ name: 'item' }) || '';
+            var displayname = result.getValue({ name: 'displayname', join: config.itemJoinId }) || '';
             var haystack = hierarchy.normalizeForSearch(itemid + ' ' + displayname);
             var matchesAll = words.every(function (w) { return haystack.indexOf(w) !== -1; });
             if (matchesAll) {
-                results.push({ id: result.getValue({ name: 'internalid' }), itemid: itemid, displayname: displayname });
+                seen[id] = true;
+                results.push({ id: id, itemid: itemid, displayname: displayname });
             }
             return results.length < 50;
         });
