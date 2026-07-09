@@ -253,21 +253,29 @@ define([
             sublist.getField({ id: id }).updateDisplayType({ displayType: serverWidget.FieldDisplayType.HIDDEN });
         });
 
+        // NetSuite's setSublistValue treats an empty string as a *missing*
+        // argument (SSS_MISSING_REQD_ARGUMENT), not a valid blank value -
+        // skip the call entirely when there's nothing to display, leaving
+        // that cell at its (blank) default instead.
+        function setCell(fieldId, line, value) {
+            if (value === null || value === undefined || value === '') {
+                return;
+            }
+            sublist.setSublistValue({ id: fieldId, line: line, value: value });
+        }
+
         rows.forEach(function (entry, index) {
             var row = entry.row;
             var isReleased = row.status === config.statusReleased;
-            sublist.setSublistValue({
-                id: 'custpage_hierarchy',
-                line: index,
-                value: hierarchy.indentLabel(entry.depth) + row.tranId + (entry.isRoot ? ' (Root)' : '')
-            });
-            sublist.setSublistValue({ id: 'custpage_assemblyitem', line: index, value: row.assemblyItemText || '' });
-            sublist.setSublistValue({ id: 'custpage_statustext', line: index, value: row.statusText || '' });
-            sublist.setSublistValue({ id: 'custpage_quantity', line: index, value: row.quantity || '' });
-            sublist.setSublistValue({ id: 'custpage_enddate', line: index, value: row.endDate || '' });
-            sublist.setSublistValue({ id: 'custpage_startdate', line: index, value: row.startDate || '' });
-            sublist.setSublistValue({ id: 'custpage_id', line: index, value: row.id });
-            sublist.setSublistValue({ id: 'custpage_editable', line: index, value: isReleased ? 'T' : 'F' });
+            setCell('custpage_hierarchy', index,
+                hierarchy.indentLabel(entry.depth) + row.tranId + (entry.isRoot ? ' (Root)' : ''));
+            setCell('custpage_assemblyitem', index, row.assemblyItemText);
+            setCell('custpage_statustext', index, row.statusText);
+            setCell('custpage_quantity', index, row.quantity);
+            setCell('custpage_enddate', index, row.endDate);
+            setCell('custpage_startdate', index, row.startDate);
+            setCell('custpage_id', index, row.id);
+            setCell('custpage_editable', index, isReleased ? 'T' : 'F');
         });
     }
 
