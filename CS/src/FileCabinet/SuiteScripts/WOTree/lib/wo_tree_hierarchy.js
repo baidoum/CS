@@ -12,6 +12,22 @@ define(['N/search', 'N/log'], function (search, log) {
     var MAX_RESULTS_PER_SEARCH = 4000; // hard cap of search.run().each()
     var MAX_TREE_DEPTH = 25; // safety net against bad/cyclical createdfrom data
 
+    // A raw field value fetched via search can differ invisibly from what's
+    // rendered on screen (HTML entities like "&amp;" for "&", stray/doubled
+    // whitespace) - normalize both sides before comparing so text that looks
+    // identical to the user actually matches.
+    function normalizeForSearch(text) {
+        return String(text || '')
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&quot;/gi, '"')
+            .replace(/&#39;/gi, '\'')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+    }
+
     function getStandardColumns(config) {
         return [
             search.createColumn({ name: 'internalid' }),
@@ -105,11 +121,20 @@ define(['N/search', 'N/log'], function (search, log) {
         }
 
         if (filters.itemSearchText) {
-            var needle = filters.itemSearchText.toLowerCase();
-            rows = rows.filter(function (row) {
-                return (row.assemblyItemText || '').toLowerCase().indexOf(needle) !== -1 ||
-                    (row.assemblyItemDisplayName || '').toLowerCase().indexOf(needle) !== -1;
+            var needle = normalizeForSearch(filters.itemSearchText);
+            var beforeCount = rows.length;
+            var matched = rows.filter(function (row) {
+                return normalizeForSearch(row.assemblyItemText).indexOf(needle) !== -1 ||
+                    normalizeForSearch(row.assemblyItemDisplayName).indexOf(needle) !== -1;
             });
+            if (!matched.length && beforeCount) {
+                log.audit('WOTree - item search debug',
+                    'needle="' + needle + '" matched 0 of ' + beforeCount + ' candidates. Sample raw values: ' +
+                    rows.slice(0, 5).map(function (r) {
+                        return '[code="' + r.assemblyItemText + '" name="' + r.assemblyItemDisplayName + '"]';
+                    }).join(' '));
+            }
+            rows = matched;
         }
 
         return rows;
