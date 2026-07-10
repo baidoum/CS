@@ -28,6 +28,19 @@ define(['N/search', 'N/log'], function (search, log) {
             .toLowerCase();
     }
 
+    // Parses an ISO yyyy-mm-dd string (as sent by <input type="date">) into
+    // a local-midnight Date object - never new Date(isoString), which V8
+    // treats as UTC midnight and can shift the date by a day in
+    // negative-UTC-offset timezones.
+    function parseIsoDateLocal(iso) {
+        var parts = String(iso || '').split('-');
+        if (parts.length !== 3) {
+            return null;
+        }
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return isNaN(d.getTime()) ? null : d;
+    }
+
     function getStandardColumns(config) {
         return [
             search.createColumn({ name: 'internalid' }),
@@ -92,12 +105,22 @@ define(['N/search', 'N/log'], function (search, log) {
             }));
         }
 
+        // The date inputs send ISO yyyy-mm-dd; search.createFilter for a DATE
+        // field needs a real Date object (or a string in the account's own
+        // date format) - passing the raw ISO string errors regardless of
+        // the account's date preference.
         if (filters.startDateFrom) {
-            f.push(search.createFilter({ name: 'startdate', operator: search.Operator.ONORAFTER, values: [filters.startDateFrom] }));
+            var fromDate = parseIsoDateLocal(filters.startDateFrom);
+            if (fromDate) {
+                f.push(search.createFilter({ name: 'startdate', operator: search.Operator.ONORAFTER, values: [fromDate] }));
+            }
         }
 
         if (filters.startDateTo) {
-            f.push(search.createFilter({ name: 'startdate', operator: search.Operator.ONORBEFORE, values: [filters.startDateTo] }));
+            var toDate = parseIsoDateLocal(filters.startDateTo);
+            if (toDate) {
+                f.push(search.createFilter({ name: 'startdate', operator: search.Operator.ONORBEFORE, values: [toDate] }));
+            }
         }
 
         return f;

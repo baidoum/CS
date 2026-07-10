@@ -76,7 +76,13 @@ define([
             planningCategories: getPlanningCategoryOptions(config)
         });
 
+        // Without this, browsers may serve a stale cached copy of this page
+        // after a redeploy - two users hitting the same URL could end up on
+        // different versions of the tool (seen in practice: one user still
+        // getting an old, already-fixed behavior after an update).
         context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.setHeader({ name: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' });
+        context.response.setHeader({ name: 'Pragma', value: 'no-cache' });
         context.response.write(page);
     }
 
