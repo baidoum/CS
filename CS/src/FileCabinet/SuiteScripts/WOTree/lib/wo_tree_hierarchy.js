@@ -7,7 +7,7 @@
  * search-call count roughly proportional to tree DEPTH, not tree SIZE, which
  * matters once there are hundreds of Work Orders in scope.
  */
-define(['N/search', 'N/log'], function (search, log) {
+define(['N/search', 'N/format', 'N/log'], function (search, format, log) {
 
     var MAX_RESULTS_PER_SEARCH = 4000; // hard cap of search.run().each()
     var MAX_TREE_DEPTH = 25; // safety net against bad/cyclical createdfrom data
@@ -105,21 +105,28 @@ define(['N/search', 'N/log'], function (search, log) {
             }));
         }
 
-        // The date inputs send ISO yyyy-mm-dd; search.createFilter for a DATE
-        // field needs a real Date object (or a string in the account's own
-        // date format) - passing the raw ISO string errors regardless of
-        // the account's date preference.
+        // The date inputs send ISO yyyy-mm-dd. Passing that raw string, or
+        // even a native JS Date object, to search.createFilter for a DATE
+        // field threw a bare UNEXPECTED_ERROR - the reliable form is a
+        // string formatted per the account's own date preference, the same
+        // representation getValue/getText already use elsewhere.
         if (filters.startDateFrom) {
             var fromDate = parseIsoDateLocal(filters.startDateFrom);
             if (fromDate) {
-                f.push(search.createFilter({ name: 'startdate', operator: search.Operator.ONORAFTER, values: [fromDate] }));
+                f.push(search.createFilter({
+                    name: 'startdate', operator: search.Operator.ONORAFTER,
+                    values: [format.format({ value: fromDate, type: format.Type.DATE })]
+                }));
             }
         }
 
         if (filters.startDateTo) {
             var toDate = parseIsoDateLocal(filters.startDateTo);
             if (toDate) {
-                f.push(search.createFilter({ name: 'startdate', operator: search.Operator.ONORBEFORE, values: [toDate] }));
+                f.push(search.createFilter({
+                    name: 'startdate', operator: search.Operator.ONORBEFORE,
+                    values: [format.format({ value: toDate, type: format.Type.DATE })]
+                }));
             }
         }
 
