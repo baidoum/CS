@@ -23,8 +23,8 @@ Files:
 
 | Parameter | Value | Status |
 |---|---|---|
-| `custscript_wo_status_released` | `WorkOrd:B` | Confirmed correct |
-| `custscript_wo_status_released_labels` | `Released,Publié` | Added - see "Multi-language status" below |
+| `custscript_wo_status_released` | `WorkOrd:B` | Works as a search filter value; confirmed NOT equal to `getValue('status')`'s actual return - see below |
+| `custscript_wo_status_released_labels` | `Released,Lancé` | **Corrected** (was `Released,Publié`, wrong guess) - this is the primary check, see "Multi-language status" below |
 | `custscript_wo_item_join_id` | `item` | Corrected (was `assemblyitem`, fails as a join id) |
 | `custscript_wo_planning_cat_field` | `planningitemcategory` | Corrected (standard field, no `custitem_` prefix) |
 | `custscript_wo_page_root_size` | `50` | Default, tune if pages feel too big/small |
@@ -66,15 +66,21 @@ script > Parameters): Free-Form Text, default `Released,Publié`.
   to be a root's own item or a sub-assembly component several levels down.
   Matching text is normalized (HTML entities, whitespace) before comparing,
   since raw search values can differ invisibly from what's rendered.
-- **Multi-language status**: NetSuite's internal status key (e.g.
-  `WorkOrd:B`) is supposed to be language-independent, but in practice the
-  fallback label comparison is what actually matters day to day - confirmed
-  in this account that a user with the NetSuite UI set to French sees the
-  Released status behave differently than English, reproduced by switching
-  UI language. `custscript_wo_status_released_labels` holds a comma-separated
-  list of accepted "Released" labels across every language your users pick
-  (default `Released,Publié`) - add another label there (no code change) if
-  someone selects yet another NetSuite UI language.
+- **Multi-language status - label match is PRIMARY, not a fallback**:
+  diagnostic logging (`log.audit('WOTree - status diagnostics', ...)`,
+  temporarily added to `actionLoadTree`) proved `getValue('status')` returns
+  a modern statusRef-style key (e.g. `pendingBuild`) that never equals the
+  legacy key `custscript_wo_status_released` holds (`WorkOrd:B`) - even
+  though that legacy key still works fine as a *search filter* value
+  (NetSuite's filter matching tolerates both key styles; `getValue` only
+  ever surfaces the modern one). So in this account the internal-key check
+  never matches at all, and `custscript_wo_status_released_labels` (a
+  comma-separated list of accepted "Released" display labels, one per
+  language your users pick) is what actually determines "editable" day to
+  day. French label confirmed as **"Lancé"**, not "Publié" (an earlier
+  unverified guess that was simply wrong). Default is now
+  `Released,Lancé` - add another label there (no code change) if someone
+  selects yet another NetSuite UI language.
 - **Dates**: the UI's native date input works in ISO `yyyy-mm-dd` regardless
   of locale. `wo_tree_suitelet.js` converts NetSuite's locale-formatted
   search results to ISO for display (`toIsoDate`), and `wo_tree_mr.js` parses

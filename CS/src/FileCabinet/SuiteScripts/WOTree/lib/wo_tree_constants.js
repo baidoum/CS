@@ -24,12 +24,19 @@ define(['N/runtime'], function (runtime) {
             // Internal value of the Work Order "status" field for Released.
             statusReleased: getParam('custscript_wo_status_released', 'WorkOrd:B'),
             // Display labels that mean "Released", one per language in use by
-            // this account's users (comma-separated) - used as a fallback
-            // whenever the internal key comparison doesn't hold, since
-            // getValue('status') has proven unreliable across some contexts.
-            // Add a label here (no code change) if another teammate uses yet
+            // this account's users (comma-separated). This is the PRIMARY,
+            // load-bearing check, not just a fallback: confirmed via
+            // diagnostic logging that getValue('status') returns a modern
+            // statusRef-style key ("pendingBuild") that never matches the
+            // legacy "WorkOrd:B" key custscript_wo_status_released holds -
+            // even though that legacy key still works fine as a SEARCH
+            // FILTER value (NetSuite's filter matching tolerates/aliases
+            // both key styles; getValue only ever surfaces the modern one).
+            // French label confirmed as "Lancé", not "Publié" (a guess that
+            // was simply wrong until checked against real data). Add a
+            // label here (no code change) if another teammate uses yet
             // another NetSuite UI language.
-            statusReleasedLabels: getParam('custscript_wo_status_released_labels', 'Released,Publié')
+            statusReleasedLabels: getParam('custscript_wo_status_released_labels', 'Released,Lancé')
                 .split(',')
                 .map(function (s) { return s.trim().toLowerCase(); })
                 .filter(function (s) { return s; }),

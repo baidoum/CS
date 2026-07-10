@@ -15,8 +15,8 @@
     <scriptcustomfield scriptid="custscript_wo_status_released_labels">
       <fieldtype>TEXT</fieldtype>
       <label>WOTree: Released Status Display Labels (comma-separated)</label>
-      <defaultvalue>Released,Publié</defaultvalue>
-      <description>Display labels meaning "Released" across every NetSuite UI language your users have selected - used as a fallback when the internal status key comparison doesn't hold (confirmed to happen for at least French, where the label is "Publié"). Add a label here, no code change, if another user picks yet another language.</description>
+      <defaultvalue>Released,Lancé</defaultvalue>
+      <description>Display labels meaning "Released" across every NetSuite UI language your users have selected - this is the primary check, confirmed via diagnostic logging that getValue('status') returns a modern statusRef-style key that never matches the legacy internal key custscript_wo_status_released holds. French label confirmed as "Lancé" (not "Publié", an earlier unverified guess). Add a label here, no code change, if another user picks yet another language.</description>
     </scriptcustomfield>
     <scriptcustomfield scriptid="custscript_wo_item_join_id">
       <fieldtype>TEXT</fieldtype>
