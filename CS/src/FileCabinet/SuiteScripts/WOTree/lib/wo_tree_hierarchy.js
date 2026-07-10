@@ -160,14 +160,28 @@ define(['N/search', 'N/log'], function (search, log) {
     // isRoot() since "matches the filters" and "is a root" are independent.
     function fetchRootCandidates(config, filters) {
         var rows = [];
-        search.create({
-            type: 'workorder',
-            filters: buildRootFilters(config, filters),
-            columns: getStandardColumns(config)
-        }).run().each(function (result) {
-            rows.push(resultToRow(result, config));
-            return rows.length < MAX_RESULTS_PER_SEARCH;
-        });
+        var rootFilters = buildRootFilters(config, filters);
+        try {
+            search.create({
+                type: 'workorder',
+                filters: rootFilters,
+                columns: getStandardColumns(config)
+            }).run().each(function (result) {
+                rows.push(resultToRow(result, config));
+                return rows.length < MAX_RESULTS_PER_SEARCH;
+            });
+        } catch (e) {
+            // Logged with the exact filter values that were in play so the
+            // real NetSuite error (name + message) is visible instead of
+            // having to guess again - check this log entry first if a date
+            // range filter throws.
+            log.error('WOTree - fetchRootCandidates search failed',
+                'filters=' + JSON.stringify(filters) +
+                ' parsedFromDate=' + (filters.startDateFrom ? String(parseIsoDateLocal(filters.startDateFrom)) : '(none)') +
+                ' parsedToDate=' + (filters.startDateTo ? String(parseIsoDateLocal(filters.startDateTo)) : '(none)') +
+                ' error=' + (e.name ? e.name + ': ' : '') + (e.message || e));
+            throw e;
+        }
 
         if (rows.length >= MAX_RESULTS_PER_SEARCH) {
             log.audit('WOTree', 'Root candidate search hit the ' + MAX_RESULTS_PER_SEARCH +
