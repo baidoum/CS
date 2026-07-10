@@ -12,6 +12,12 @@
       <defaultvalue>WorkOrd:B</defaultvalue>
       <description>Internal value of the Work Order status field for "Released". Verify with wo_field_discovery_sl.js.</description>
     </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_wo_status_released_labels">
+      <fieldtype>TEXT</fieldtype>
+      <label>WOTree: Released Status Display Labels (comma-separated)</label>
+      <defaultvalue>Released,Publié</defaultvalue>
+      <description>Display labels meaning "Released" across every NetSuite UI language your users have selected - used as a fallback when the internal status key comparison doesn't hold (confirmed to happen for at least French, where the label is "Publié"). Add a label here, no code change, if another user picks yet another language.</description>
+    </scriptcustomfield>
     <scriptcustomfield scriptid="custscript_wo_item_join_id">
       <fieldtype>TEXT</fieldtype>
       <label>WOTree: Assembly Item Search Join ID</label>

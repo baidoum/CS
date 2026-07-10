@@ -258,7 +258,7 @@ define([
             endDate: row.endDate || '',
             depth: entry.depth,
             isRoot: entry.isRoot,
-            editable: row.status === config.statusReleased || isReleasedLabel(row.statusText)
+            editable: row.status === config.statusReleased || isReleasedLabel(row.statusText, config)
         };
     }
 
@@ -382,7 +382,7 @@ define([
             return true;
         });
         return changes.filter(function (c) {
-            return statusById[c.id] === config.statusReleased || isReleasedLabel(statusTextById[c.id]);
+            return statusById[c.id] === config.statusReleased || isReleasedLabel(statusTextById[c.id], config);
         });
     }
 
@@ -390,8 +390,9 @@ define([
     // to guess/verify correctly; the "Released" display label is what we've
     // actually confirmed renders correctly, so treat either match as
     // authoritative rather than trusting the internal key alone.
-    function isReleasedLabel(text) {
-        return String(text || '').trim().toLowerCase() === 'released';
+    function isReleasedLabel(text, config) {
+        var normalized = String(text || '').trim().toLowerCase();
+        return config.statusReleasedLabels.indexOf(normalized) !== -1;
     }
 
     function stageChangesFile(validated) {

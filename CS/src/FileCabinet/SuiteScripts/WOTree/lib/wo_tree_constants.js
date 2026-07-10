@@ -23,6 +23,16 @@ define(['N/runtime'], function (runtime) {
         return {
             // Internal value of the Work Order "status" field for Released.
             statusReleased: getParam('custscript_wo_status_released', 'WorkOrd:B'),
+            // Display labels that mean "Released", one per language in use by
+            // this account's users (comma-separated) - used as a fallback
+            // whenever the internal key comparison doesn't hold, since
+            // getValue('status') has proven unreliable across some contexts.
+            // Add a label here (no code change) if another teammate uses yet
+            // another NetSuite UI language.
+            statusReleasedLabels: getParam('custscript_wo_status_released_labels', 'Released,Publié')
+                .split(',')
+                .map(function (s) { return s.trim().toLowerCase(); })
+                .filter(function (s) { return s; }),
             // Search join id used to reach the assembly item's own fields from a
             // Work Order search (e.g. to filter by Planning Item Category).
             itemJoinId: getParam('custscript_wo_item_join_id', 'item'),
