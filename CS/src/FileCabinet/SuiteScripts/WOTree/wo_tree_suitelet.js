@@ -167,12 +167,52 @@ define([
         var page = parseInt(payload.page, 10) || 1;
         var result = runHierarchySearch(config, filters, page, payload.sortField, payload.sortDir);
 
+        logStatusDiagnostics(result.rows, config);
+
         return {
             rows: result.rows.map(function (entry) { return serializeRow(entry, config); }),
             totalRootCount: result.totalRootCount,
             totalRootPages: result.totalRootPages,
             currentPage: result.currentPage
         };
+    }
+
+    // Diagnostic for the "editable" status mismatch across NetSuite UI
+    // languages - logs every DISTINCT (internal status, status text) pair
+    // seen this request, whether each matches the internal-key check and
+    // the label-list check, and a hex dump of the text's char codes (to
+    // catch invisible Unicode differences, e.g. precomposed vs combining
+    // accented characters, which look identical but compare unequal).
+    function logStatusDiagnostics(entries, config) {
+        var seen = {};
+        var samples = [];
+        entries.forEach(function (entry) {
+            var row = entry.row;
+            var key = row.status + '|' + row.statusText;
+            if (seen[key]) {
+                return;
+            }
+            seen[key] = true;
+            samples.push({
+                internalStatus: row.status,
+                statusText: row.statusText,
+                statusTextHex: toHexDump(row.statusText),
+                matchesInternalKey: row.status === config.statusReleased,
+                matchesLabel: isReleasedLabel(row.statusText, config)
+            });
+        });
+        log.audit('WOTree - status diagnostics',
+            'configKey="' + config.statusReleased + '" configLabels=' + JSON.stringify(config.statusReleasedLabels) +
+            ' samples=' + JSON.stringify(samples));
+    }
+
+    function toHexDump(s) {
+        var out = [];
+        var str = String(s || '');
+        for (var i = 0; i < str.length; i++) {
+            out.push(str.charCodeAt(i).toString(16));
+        }
+        return out.join(' ');
     }
 
     // Sorting applies to the ROOT groups only - each root's descendants
