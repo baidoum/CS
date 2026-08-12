@@ -468,32 +468,61 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // The three linkage fields are copied from the original being replaced,
     // never resolved from scratch - spec Annexe B.4: "ne sont pas devinables
     // pour un couple article / emplacement donné".
-    function createFirmedPlannedOrder(original, line) {
-        // PLANNED_ORDERS_CAN_ONLY_BE_MANUALLY_CREATED_FROM_THE_PLANNING_WORKBENCH
-        // (constaté sur sandbox) : plannedorder refuse une création par
-        // script si les champs de liaison sont posés via setValue() après
-        // coup sur un record vide. Ils doivent être fournis en
-        // `defaultValues`, AU MOMENT de record.create() - c'est ce que
-        // décrivait déjà la spec (section 9 / Annexe B.4 : "paramètres
-        // d'initialisation obligatoires") et que cette première version
-        // n'avait pas respecté à la lettre.
-        var rec = record.create({
-            type: 'plannedorder',
-            isDynamic: false,
-            defaultValues: {
-                item: original.item,
-                location: original.location,
-                itemlocation: original.itemlocation,
-                transactiontype: original.transactiontype,
-                planningitemlocation: original.planningitemlocation,
-                planningengineitemlocation: original.planningengineitemlocation,
-                supplyplandefinition: original.supplyplandefinition,
-                supplyplanningrun: original.supplyplanningrun,
-                // Section 9 (constat) : une commande planifiée créée
-                // manuellement ne peut pas être non firmée.
-                firmed: 'T'
+    // Ordre d'essai des combinaisons de `defaultValues` pour l'initialisation
+    // de plannedorder - du sous-ensemble le plus proche du texte littéral de
+    // la spec (section 9) au plus complet. Deux erreurs déjà observées sur
+    // sandbox : PLANNED_ORDERS_CAN_ONLY_BE_MANUALLY_CREATED_FROM_THE_PLANNING_WORKBENCH
+    // sans defaultValues du tout, puis INVALID_RCRD_INITIALIZE avec les 9
+    // champs copiés de l'origine (au moins un n'est pas un paramètre
+    // d'initialisation valide pour ce type). Auto-diagnostic plutôt qu'une
+    // nouvelle supposition à l'aveugle : la première variante qui passe
+    // l'initialisation est utilisée, et journalisée (log.audit) pour qu'on
+    // puisse ensuite figer le code sur elle une fois confirmée.
+    function defaultValuesVariants(original) {
+        var base = {
+            supplyplandefinition: original.supplyplandefinition,
+            supplyplanningrun: original.supplyplanningrun,
+            firmed: 'T'
+        };
+        return [
+            { label: 'minimal (spec section 9 littérale)', values: base },
+            { label: '+ item/location', values: Object.assign({}, base, {
+                item: original.item, location: original.location
+            }) },
+            { label: '+ itemlocation', values: Object.assign({}, base, {
+                item: original.item, location: original.location, itemlocation: original.itemlocation
+            }) },
+            { label: '+ transactiontype', values: Object.assign({}, base, {
+                item: original.item, location: original.location, itemlocation: original.itemlocation,
+                transactiontype: original.transactiontype
+            }) }
+        ];
+    }
+
+    function initializePlannedOrder(original) {
+        var variants = defaultValuesVariants(original);
+        var errors = [];
+        for (var i = 0; i < variants.length; i++) {
+            try {
+                var rec = record.create({ type: 'plannedorder', isDynamic: false, defaultValues: variants[i].values });
+                log.audit('planif_dao - createFirmedPlannedOrder : variante defaultValues retenue', variants[i].label);
+                return rec;
+            } catch (e) {
+                errors.push(variants[i].label + ' : ' + (e.name ? e.name + ' - ' : '') + e.message);
             }
-        });
+        }
+        log.error('planif_dao - toutes les variantes defaultValues ont échoué', errors.join(' | '));
+        throw new Error('Initialisation de plannedorder impossible (' + variants.length + ' variantes testées) : ' + errors.join(' | '));
+    }
+
+    function createFirmedPlannedOrder(original, line) {
+        var rec = initializePlannedOrder(original);
+        rec.setValue({ fieldId: 'item', value: original.item });
+        rec.setValue({ fieldId: 'location', value: original.location });
+        rec.setValue({ fieldId: 'itemlocation', value: original.itemlocation });
+        rec.setValue({ fieldId: 'transactiontype', value: original.transactiontype });
+        rec.setValue({ fieldId: 'planningitemlocation', value: original.planningitemlocation });
+        rec.setValue({ fieldId: 'planningengineitemlocation', value: original.planningengineitemlocation });
         rec.setValue({ fieldId: 'quantity', value: line.quantity });
         rec.setValue({ fieldId: 'startdate', value: line.startDate });
         rec.setValue({ fieldId: 'enddate', value: line.startDate });
