@@ -469,21 +469,34 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // never resolved from scratch - spec Annexe B.4: "ne sont pas devinables
     // pour un couple article / emplacement donné".
     function createFirmedPlannedOrder(original, line) {
-        var rec = record.create({ type: 'plannedorder', isDynamic: false });
-        rec.setValue({ fieldId: 'item', value: original.item });
-        rec.setValue({ fieldId: 'location', value: original.location });
-        rec.setValue({ fieldId: 'itemlocation', value: original.itemlocation });
-        rec.setValue({ fieldId: 'transactiontype', value: original.transactiontype });
-        rec.setValue({ fieldId: 'planningitemlocation', value: original.planningitemlocation });
-        rec.setValue({ fieldId: 'planningengineitemlocation', value: original.planningengineitemlocation });
-        rec.setValue({ fieldId: 'supplyplandefinition', value: original.supplyplandefinition });
-        rec.setValue({ fieldId: 'supplyplanningrun', value: original.supplyplanningrun });
+        // PLANNED_ORDERS_CAN_ONLY_BE_MANUALLY_CREATED_FROM_THE_PLANNING_WORKBENCH
+        // (constaté sur sandbox) : plannedorder refuse une création par
+        // script si les champs de liaison sont posés via setValue() après
+        // coup sur un record vide. Ils doivent être fournis en
+        // `defaultValues`, AU MOMENT de record.create() - c'est ce que
+        // décrivait déjà la spec (section 9 / Annexe B.4 : "paramètres
+        // d'initialisation obligatoires") et que cette première version
+        // n'avait pas respecté à la lettre.
+        var rec = record.create({
+            type: 'plannedorder',
+            isDynamic: false,
+            defaultValues: {
+                item: original.item,
+                location: original.location,
+                itemlocation: original.itemlocation,
+                transactiontype: original.transactiontype,
+                planningitemlocation: original.planningitemlocation,
+                planningengineitemlocation: original.planningengineitemlocation,
+                supplyplandefinition: original.supplyplandefinition,
+                supplyplanningrun: original.supplyplanningrun,
+                // Section 9 (constat) : une commande planifiée créée
+                // manuellement ne peut pas être non firmée.
+                firmed: 'T'
+            }
+        });
         rec.setValue({ fieldId: 'quantity', value: line.quantity });
         rec.setValue({ fieldId: 'startdate', value: line.startDate });
         rec.setValue({ fieldId: 'enddate', value: line.startDate });
-        // Section 9 (constat) : une commande planifiée créée manuellement ne
-        // peut pas être non firmée.
-        rec.setValue({ fieldId: 'firmed', value: true });
         return rec.save();
     }
 
