@@ -90,8 +90,11 @@ define([
         var action = req.action;
         var payload = req.payload || {};
 
+        if (action === 'listSupplyPlans') {
+            return writeJson(context, actionListSupplyPlans());
+        }
         if (action === 'listItems') {
-            return writeJson(context, actionListItems());
+            return writeJson(context, actionListItems(payload));
         }
         if (action === 'listOrders') {
             return writeJson(context, actionListOrders(payload));
@@ -100,12 +103,38 @@ define([
             return writeJson(context, actionApplySplit(payload));
         }
         if (action === 'launch') {
-            return writeJson(context, actionLaunch());
+            return writeJson(context, actionLaunch(payload));
         }
         if (action === 'listJournal') {
             return writeJson(context, actionListJournal(payload));
         }
         return writeJson(context, { error: 'Action inconnue : ' + action }, 400);
+    }
+
+    // Un compte peut porter plusieurs Supply Plan Definition - l'écran en
+    // propose la liste (voir actionListSupplyPlans) et le client renvoie
+    // celle choisie dans chaque payload. Si absente (première charge), on
+    // retombe sur custscript_planif_supply_plan_def_id.
+    function resolveConfigForRequest(payload) {
+        var cfg = config.getConfig();
+        if (payload && payload.supplyPlanDefinitionId) {
+            cfg.supplyPlanDefinitionId = payload.supplyPlanDefinitionId;
+        }
+        return cfg;
+    }
+
+    // ---- action: listSupplyPlans -------------------------------------
+
+    function actionListSupplyPlans() {
+        var cfg = config.getConfig();
+        var plans = dao.listSupplyPlanDefinitions();
+        if (!plans.length) {
+            // Repli : au moins le plan configuré par défaut, pour que
+            // l'écran reste utilisable si la liste des plans n'a pas pu
+            // être lue (section 10 - non confirmé sur ce compte).
+            plans = [{ id: cfg.supplyPlanDefinitionId, name: 'Plan ' + cfg.supplyPlanDefinitionId }];
+        }
+        return { plans: plans, defaultId: cfg.supplyPlanDefinitionId };
     }
 
     function writeJson(context, obj, status) {
@@ -123,8 +152,8 @@ define([
     // planificateur ». F5 - niveaux comportant encore des propositions non
     // arbitrées.
 
-    function actionListItems() {
-        var cfg = config.getConfig();
+    function actionListItems(payload) {
+        var cfg = resolveConfigForRequest(payload);
         var currentRun = dao.resolveCurrentRun(cfg);
         var summaries = currentRun.runId
             ? dao.listItemLocationSummaries(cfg, currentRun.runId)
@@ -193,7 +222,7 @@ define([
     // ---- action: listOrders (F2, F8) ---------------------------------------
 
     function actionListOrders(payload) {
-        var cfg = config.getConfig();
+        var cfg = resolveConfigForRequest(payload);
         var itemId = payload.itemId;
         var locationId = payload.locationId;
         if (!itemId || !locationId) {
@@ -275,7 +304,7 @@ define([
     // retrouver a posteriori).
 
     function actionApplySplit(payload) {
-        var cfg = config.getConfig();
+        var cfg = resolveConfigForRequest(payload);
         var originalOrderId = payload.originalOrderId;
         var itemId = payload.itemId;
         var locationId = payload.locationId;
@@ -322,8 +351,8 @@ define([
     // ; à défaut, redirection vers l'écran standard de la Supply Plan
     // Definition.
 
-    function actionLaunch() {
-        var cfg = config.getConfig();
+    function actionLaunch(payload) {
+        var cfg = resolveConfigForRequest(payload);
         var launched = null;
 
         // Chargement synchrone à la demande - N/action n'est utilisé que

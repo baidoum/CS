@@ -37,6 +37,47 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         return config.plannedOrderTable || 'plannedorder';
     }
 
+    // ---- sélection du plan d'approvisionnement -------------------------
+    //
+    // Un compte peut porter plusieurs Supply Plan Definition (spec limitée
+    // à 729922, mais l'écran doit rester utilisable si le planificateur en
+    // a plusieurs) - l'écran propose donc un sélecteur plutôt qu'un id figé
+    // en paramètre. Non confirmé sur sandbox (record type 'supplyplandefinition'
+    // recherchable/interrogeable) - repli sur le seul id configuré si ni
+    // SuiteQL ni N/search ne fonctionnent, pour que l'écran reste utilisable.
+
+    function listSupplyPlanDefinitions() {
+        try {
+            return listSupplyPlanDefinitions_SuiteQL();
+        } catch (e) {
+            log.error('planif_dao - listSupplyPlanDefinitions SuiteQL failed, falling back to N/search', e.message);
+            try {
+                return listSupplyPlanDefinitions_Search();
+            } catch (e2) {
+                log.error('planif_dao - listSupplyPlanDefinitions N/search failed too', e2.message);
+                return [];
+            }
+        }
+    }
+
+    function listSupplyPlanDefinitions_SuiteQL() {
+        var rs = query.runSuiteQL({ query: 'SELECT id, name FROM supplyplandefinition ORDER BY name' }).asMappedResults();
+        suiteQlAvailable = true;
+        return rs.map(function (row) { return { id: row.id, name: row.name || ('Plan ' + row.id) }; });
+    }
+
+    function listSupplyPlanDefinitions_Search() {
+        var rows = [];
+        search.create({
+            type: 'supplyplandefinition',
+            columns: ['name']
+        }).run().each(function (result) {
+            rows.push({ id: result.id, name: result.getValue({ name: 'name' }) || ('Plan ' + result.id) });
+            return true;
+        });
+        return rows;
+    }
+
     // ---- run resolution ----------------------------------------------
 
     function resolveCurrentRun(config) {
@@ -548,6 +589,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     }
 
     return {
+        listSupplyPlanDefinitions: listSupplyPlanDefinitions,
         resolveCurrentRun: resolveCurrentRun,
         listItemLocationSummaries: listItemLocationSummaries,
         listPlannedOrdersForItem: listPlannedOrdersForItem,
