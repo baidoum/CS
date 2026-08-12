@@ -176,11 +176,17 @@ define([
         return {
             levels: levels,
             levelsTodo: levelsTodo,
-            lastRun: { runId: currentRun.runId, timestamp: toIsoDate(currentRun.timestamp) },
-            // F4 : nombre d'articles arbitrés depuis le dernier recalcul -
+            // Pas d'horodatage : `plannedorder` n'expose pas
+            // lastmodifieddate (constaté sur sandbox, 2026-08-12 -
+            // SSS_INVALID_SRCH_COL en recherche, "Unknown identifier" en
+            // SuiteQL). Le "dernier calcul" se représente par le numéro de
+            // run, seul identifiant fiable.
+            lastRun: { runId: currentRun.runId },
+            // F4 : nombre d'articles arbitrés PENDANT le run courant -
             // dérivé du journal (F9), pas d'un état navigateur qui se
-            // perdrait à la fermeture de l'onglet.
-            arbitratedSinceRun: dao.countArbitratedItemsSinceRun(currentRun.timestamp)
+            // perdrait à la fermeture de l'onglet. Se remet à zéro
+            // naturellement dès qu'un recalcul fait avancer le run.
+            arbitratedSinceRun: dao.countArbitratedItemsSinceRun(currentRun.runId)
         };
     }
 
@@ -204,7 +210,6 @@ define([
 
         return {
             currentRunId: currentRun.runId,
-            currentRunTimestamp: toIsoDate(currentRun.timestamp),
             orders: orders.map(serializeOrder),
             components: components.map(function (c) {
                 var levelInfo = config.levelForCode(c.componentCode, cfg);
@@ -297,7 +302,11 @@ define([
                 operation: operation,
                 originalOrderId: originalOrderId,
                 createdOrderIds: result.createdOrderIds,
-                quantityGap: result.quantityGap
+                quantityGap: result.quantityGap,
+                // Run actif au moment de l'écriture (voir dao.applySplit) -
+                // permet à F4 de compter les arbitrages du run en cours
+                // sans dépendre d'un horodatage.
+                runId: result.runId
             });
             result.journalEntryId = journalId;
         }

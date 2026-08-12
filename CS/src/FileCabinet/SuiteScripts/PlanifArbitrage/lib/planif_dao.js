@@ -48,38 +48,51 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         }
     }
 
+    // Pas d'horodatage : `plannedorder` n'expose pas `lastmodifieddate`
+    // (constaté sur sandbox le 2026-08-12 - SSS_INVALID_SRCH_COL en
+    // recherche, "Unknown identifier" en SuiteQL - probablement parce que
+    // ce record est régénéré en bloc par le moteur, pas "modifié" au sens
+    // classique). Seul `supplyplanningrun` est fiable ; le "dernier calcul"
+    // se représente par ce numéro de run, jamais par une date.
+
     function resolveCurrentRun_SuiteQL(config) {
-        var sql = 'SELECT supplyplanningrun AS runid, MAX(lastmodifieddate) AS lastmod ' +
+        var sql = 'SELECT MAX(TO_NUMBER(supplyplanningrun)) AS runid ' +
             'FROM ' + plannedOrderTable(config) + ' ' +
-            'WHERE supplyplandefinition = ? ' +
-            'GROUP BY supplyplanningrun ' +
-            'ORDER BY TO_NUMBER(supplyplanningrun) DESC';
+            'WHERE supplyplandefinition = ?';
         var rs = query.runSuiteQL({ query: sql, params: [config.supplyPlanDefinitionId] }).asMappedResults();
         suiteQlAvailable = true;
-        if (!rs.length) {
-            return { runId: null, timestamp: null };
+        if (!rs.length || rs[0].runid === null || rs[0].runid === undefined) {
+            return { runId: null };
         }
-        return { runId: rs[0].runid, timestamp: rs[0].lastmod };
+        return { runId: String(rs[0].runid) };
     }
 
     function resolveCurrentRun_Search(config) {
-        var runId = null;
-        var timestamp = null;
+        // Agrégé en JS plutôt que via un tri de recherche sur
+        // supplyplanningrun : ce champ n'est pas garanti trié numériquement
+        // par un search.Sort (texte "9" > "10") - Math.max côté serveur est
+        // fiable indépendamment du type de stockage réel du champ.
+        var runIds = [];
         search.create({
             type: 'plannedorder',
             filters: [
                 search.createFilter({ name: 'supplyplandefinition', operator: search.Operator.ANYOF, values: [config.supplyPlanDefinitionId] })
             ],
             columns: [
-                search.createColumn({ name: 'supplyplanningrun', sort: search.Sort.DESC }),
-                search.createColumn({ name: 'lastmodifieddate' })
+                search.createColumn({ name: 'supplyplanningrun', summary: search.Summary.GROUP })
             ]
         }).run().each(function (result) {
-            runId = result.getValue({ name: 'supplyplanningrun' });
-            timestamp = result.getValue({ name: 'lastmodifieddate' });
-            return false; // first row only, already sorted desc
+            var v = result.getValue({ name: 'supplyplanningrun', summary: search.Summary.GROUP });
+            if (v) {
+                runIds.push(v);
+            }
+            return true;
         });
-        return { runId: runId, timestamp: timestamp };
+        if (!runIds.length) {
+            return { runId: null };
+        }
+        var maxRunId = runIds.reduce(function (a, b) { return parseInt(b, 10) > parseInt(a, 10) ? b : a; });
+        return { runId: maxRunId };
     }
 
     // ---- F1 : listItems support -----------------------------------------
@@ -378,7 +391,12 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             createdOrderIds: created,
             quantityGap: quantityGap,
             alreadyApplied: false,
-            originalDeleteFailed: originalDeleteFailed
+            originalDeleteFailed: originalDeleteFailed,
+            // Run actif au moment de l'écriture (copié depuis l'origine,
+            // jamais résolu à part - voir createFirmedPlannedOrder) : sert à
+            // dater l'entrée de journal en termes de run plutôt que de
+            // timestamp, `plannedorder` n'exposant pas lastmodifieddate.
+            runId: original.supplyplanningrun
         };
     }
 
@@ -445,14 +463,19 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // niveaux inférieurs, qui n'a lieu qu'au recalcul. On le dérive du
     // journal (F9) plutôt que d'un état côté navigateur (qui se perdrait à
     // la fermeture de l'onglet - c'est exactement le risque que F4 doit
-    // couvrir) : nombre d'articles distincts arbitrés depuis l'horodatage
-    // du run courant.
+    // couvrir) : nombre d'articles distincts arbitrés PENDANT le run
+    // actuellement en cours (custrecord_planif_journal_run === currentRunId).
+    // Basé sur le run plutôt que sur un horodatage - `plannedorder` n'expose
+    // pas lastmodifieddate (constaté sur sandbox). Un recalcul (F6) fait
+    // avancer supplyplanningrun sur toutes les commandes, y compris
+    // firmées : les entrées de journal d'un run antérieur ne comptent donc
+    // plus une fois le recalcul effectué - remise à zéro naturelle.
 
-    function countArbitratedItemsSinceRun(runTimestamp) {
+    function countArbitratedItemsSinceRun(currentRunId) {
         try {
             var filters = [];
-            if (runTimestamp) {
-                filters.push(search.createFilter({ name: 'created', operator: search.Operator.AFTER, values: [runTimestamp] }));
+            if (currentRunId) {
+                filters.push(search.createFilter({ name: 'custrecord_planif_journal_run', operator: search.Operator.IS, values: [currentRunId] }));
             }
             var count = 0;
             search.create({
@@ -481,6 +504,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             rec.setValue({ fieldId: 'custrecord_planif_journal_origin', value: entry.originalOrderId || '' });
             rec.setValue({ fieldId: 'custrecord_planif_journal_created', value: JSON.stringify(entry.createdOrderIds || []) });
             rec.setValue({ fieldId: 'custrecord_planif_journal_gap', value: entry.quantityGap || 0 });
+            rec.setValue({ fieldId: 'custrecord_planif_journal_run', value: entry.runId || '' });
             return rec.save();
         } catch (e) {
             log.error('planif_dao - writeJournalEntry failed', e.message);
@@ -501,7 +525,8 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                     'custrecord_planif_journal_op',
                     'custrecord_planif_journal_origin',
                     'custrecord_planif_journal_created',
-                    'custrecord_planif_journal_gap'
+                    'custrecord_planif_journal_gap',
+                    'custrecord_planif_journal_run'
                 ]
             }).run().each(function (result) {
                 rows.push({
@@ -511,7 +536,8 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                     operation: result.getValue({ name: 'custrecord_planif_journal_op' }) || '',
                     originalOrderId: result.getValue({ name: 'custrecord_planif_journal_origin' }) || '',
                     createdOrderIds: result.getValue({ name: 'custrecord_planif_journal_created' }) || '[]',
-                    quantityGap: parseFloat(result.getValue({ name: 'custrecord_planif_journal_gap' })) || 0
+                    quantityGap: parseFloat(result.getValue({ name: 'custrecord_planif_journal_gap' })) || 0,
+                    runId: result.getValue({ name: 'custrecord_planif_journal_run' }) || ''
                 });
                 return rows.length < (limit || 200);
             });

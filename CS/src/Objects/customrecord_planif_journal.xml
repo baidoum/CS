@@ -74,6 +74,13 @@
       <ismandatory>F</ismandatory>
       <isdisplay>T</isdisplay>
     </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_run">
+      <fieldtype>TEXT</fieldtype>
+      <label>Run de planification</label>
+      <description>Numéro de supplyplanningrun actif au moment de l'écriture (copié depuis la commande d'origine). Sert à dériver F4 (arbitrages en attente de recalcul) sans dépendre d'un horodatage - plannedorder n'expose pas lastmodifieddate.</description>
+      <ismandatory>F</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
   </customrecordcustomfields>
   <permissions>
     <permission>
