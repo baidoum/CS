@@ -1,0 +1,84 @@
+<!--
+  Journal fonctionnel de l'outil Planif Arbitrage (spec F9) : horodatage,
+  utilisateur, article, opération, proposition d'origine, commandes créées,
+  écart de quantité. Distinct du journal technique (log.audit dans
+  SL_Planif_Arbitrage.js) - c'est la seule trace exploitable d'un
+  sur-approvisionnement (Annexe B.10).
+
+  Non validé par `suitecloud project:validate` à ce stade - structure écrite
+  d'après le schéma SDF standard des customrecordtype, à corriger si la
+  validation signale un écart.
+-->
+<customrecordtype scriptid="customrecord_planif_journal">
+  <recordname>Planif Arbitrage - Journal</recordname>
+  <accesstype>CUSTRECORDENTRYPERM</accesstype>
+  <allowattachments>F</allowattachments>
+  <allowinlineediting>F</allowinlineediting>
+  <allowinlinedeleting>F</allowinlinedeleting>
+  <allowinlinedetaching>F</allowinlinedetaching>
+  <allownumberingoverride>F</allownumberingoverride>
+  <allowuiaccess>T</allowuiaccess>
+  <allowquickadd>F</allowquickadd>
+  <allowquicksearch>F</allowquicksearch>
+  <description>Journal des interventions du planificateur dans l'outil de séquencement/fractionnement (F9).</description>
+  <enabledle>F</enabledle>
+  <enablekeywords>F</enablekeywords>
+  <enablemailmerge>F</enablemailmerge>
+  <enablenametranslation>F</enablenametranslation>
+  <enablenumbering>F</enablenumbering>
+  <enableoptimisticlocking>F</enableoptimisticlocking>
+  <enablesystemnotes>T</enablesystemnotes>
+  <hierarchical>F</hierarchical>
+  <iconbuiltin>T</iconbuiltin>
+  <includename>T</includename>
+  <isinactive>F</isinactive>
+  <isordermatrixchild>F</isordermatrixchild>
+  <shownotes>T</shownotes>
+  <usepermissions>F</usepermissions>
+  <customrecordcustomfields>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_user">
+      <fieldtype>SELECT</fieldtype>
+      <label>Utilisateur</label>
+      <selectrecordtype>-4</selectrecordtype>
+      <ismandatory>T</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_item">
+      <fieldtype>SELECT</fieldtype>
+      <label>Article</label>
+      <selectrecordtype>-11</selectrecordtype>
+      <ismandatory>T</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_op">
+      <fieldtype>TEXTAREA</fieldtype>
+      <label>Opération</label>
+      <ismandatory>F</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_origin">
+      <fieldtype>TEXT</fieldtype>
+      <label>Proposition d'origine (id)</label>
+      <ismandatory>F</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_created">
+      <fieldtype>TEXTAREA</fieldtype>
+      <label>Commandes créées (ids, JSON)</label>
+      <ismandatory>F</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
+    <customrecordcustomfield scriptid="custrecord_planif_journal_gap">
+      <fieldtype>FLOAT</fieldtype>
+      <label>Écart de quantité</label>
+      <ismandatory>F</ismandatory>
+      <isdisplay>T</isdisplay>
+    </customrecordcustomfield>
+  </customrecordcustomfields>
+  <permissions>
+    <permission>
+      <permittedlevel>EDIT</permittedlevel>
+      <permittedrole>ADMINISTRATOR</permittedrole>
+    </permission>
+  </permissions>
+</customrecordtype>

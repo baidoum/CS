@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — Séquencement des ordres planifiés</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --slate:#44597a; --slate-dk:#33445d;
+  --ns-blue:#1f6fd0; --ns-blue-dk:#175aad;
+  --human:#b1701a; --human-bg:#fdf6e9; --human-br:#e3c9a0;
+  --engine:#0f6e6e; --engine-bg:#eef6f6; --engine-br:#b8d6d6;
+  --alert:#a8322d; --alert-bg:#fbeceb;
+  --ink:#1c2430; --ink-2:#5a6675; --ink-3:#8a95a3;
+  --rule:#d7dce3; --rule-lt:#e8ecf1; --white:#fff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:13px;color:var(--ink);background:#eaedf1;line-height:1.45}
+.mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ---------- Chrome ---------- */
+.topbar{background:var(--slate);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.topbar h1{font-size:15px;font-weight:600;margin:0}
+.crumb{font-size:11px;color:#c3cddd;text-transform:uppercase;letter-spacing:.09em}
+.mock-flag{margin-left:auto;background:#fff;color:var(--slate-dk);font-size:10px;font-weight:700;
+  letter-spacing:.11em;text-transform:uppercase;padding:4px 9px;border-radius:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 20px 60px}
+
+/* ---------- Barre d'état du plan ---------- */
+.planbar{background:var(--white);border:1px solid var(--rule);border-left:4px solid var(--slate);
+  padding:12px 16px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px}
+.pb{display:flex;flex-direction:column;gap:2px}
+.pb dt{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.pb dd{margin:0;font-size:13px;font-weight:500}
+.pb dd.warn{color:var(--human);font-weight:600}
+.planbar .grow{margin-left:auto;display:flex;gap:9px;align-items:center}
+
+/* ---------- Sélecteur ---------- */
+.picker{background:var(--white);border:1px solid var(--rule);padding:14px 16px;
+  display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.picker label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ink-2);margin-bottom:5px}
+.combo{position:relative}
+.combo-row{display:flex}
+.combo input{font-family:'IBM Plex Sans',sans-serif;font-size:13px;padding:6px 9px;width:320px;
+  border:1px solid #b6c0cd;border-right:0;border-radius:2px 0 0 2px;background:#fff}
+.combo-toggle{border:1px solid #b6c0cd;background:#f0f3f7;border-radius:0 2px 2px 0;
+  padding:0 11px;cursor:pointer;font-size:11px;color:var(--ink-2)}
+.combo-toggle:hover{background:#e5eaf1}
+.combo ul{position:absolute;z-index:30;top:calc(100% + 3px);left:0;width:470px;margin:0;padding:0;
+  list-style:none;background:#fff;border:1px solid #9aa7b8;box-shadow:0 6px 18px rgba(28,36,48,.16);
+  max-height:340px;overflow:auto}
+.combo li.grp{padding:7px 12px 5px;background:#eef1f5;border-top:1px solid var(--rule-lt);
+  font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#41505f;font-weight:700;
+  position:sticky;top:0}
+.combo li.opt{padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;
+  border-left:3px solid transparent}
+.combo li.opt:hover,.combo li.opt.cursor{background:#eaf2fd;border-left-color:var(--ns-blue)}
+.combo li.opt .code{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-2);
+  width:58px;flex:0 0 58px}
+.combo li.opt .code b{color:var(--ink);font-weight:700}
+.combo li.opt .nm{flex:1}
+.combo li.opt .nm em{display:block;font-style:normal;font-size:11px;color:var(--ink-3)}
+.combo li.none{padding:10px 12px;color:var(--ink-3);font-style:italic}
+.badge{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 6px;border-radius:2px;white-space:nowrap}
+.badge-todo{background:var(--engine-bg);color:var(--engine);border:1px solid var(--engine-br)}
+.badge-done{background:var(--human-bg);color:var(--human);border:1px solid var(--human-br)}
+.badge-buy{background:#f0f2f5;color:var(--ink-2);border:1px solid var(--rule)}
+.picker-hint{font-size:11.5px;color:var(--ink-2);padding-bottom:6px}
+
+/* ---------- Contexte / état vide ---------- */
+.context{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
+  background-color:var(--rule);border:1px solid var(--rule)}
+.ctx{background:var(--white);padding:9px 13px}
+.ctx dt{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);margin:0 0 3px}
+.ctx dd{margin:0;font-size:13px;font-weight:500}
+.blank{background:var(--white);border:1px solid var(--rule);padding:44px 24px;text-align:center}
+.blank h3{margin:0 0 6px;font-size:14px;font-weight:600}
+.blank p{margin:0;font-size:12.5px;color:var(--ink-2)}
+
+/* ---------- Légende ---------- */
+.legend{display:flex;margin:14px 0 20px;border:1px solid var(--rule);background:var(--white)}
+.legend > div{flex:1;padding:11px 14px;border-left:4px solid}
+.legend > div + div{box-shadow:inset 1px 0 0 var(--rule-lt)}
+.lg-human{border-left-color:var(--human)}
+.lg-engine{border-left-color:var(--engine)}
+.legend strong{display:block;font-size:12px}
+.legend span{font-size:11.5px;color:var(--ink-2)}
+
+/* ---------- Sections ---------- */
+section{margin-bottom:22px}
+.sec-head{display:flex;align-items:baseline;gap:12px;padding:0 0 7px;border-bottom:2px solid var(--slate)}
+.sec-head h2{font-size:13px;font-weight:600;margin:0;text-transform:uppercase;letter-spacing:.07em}
+.sec-head .spec{font-size:10.5px;color:var(--ink-3);margin-left:auto}
+.sec-sub{border-bottom-width:1px;border-bottom-color:var(--rule)}
+.sec-sub h2{color:var(--ink-2);font-size:12px}
+
+/* ---------- Tables ---------- */
+table{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--rule);border-top:0}
+thead th{background:#dfe4ea;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:#41505f;text-align:left;padding:7px 10px;font-weight:600;white-space:nowrap}
+tbody td{padding:8px 10px;border-top:1px solid var(--rule-lt);vertical-align:middle}
+tbody tr.sel{background:#eaf2fd}
+tbody tr.is-human{box-shadow:inset 4px 0 0 var(--human)}
+tbody tr.is-engine{box-shadow:inset 4px 0 0 var(--engine)}
+td.num{text-align:right}
+.pill{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:2px}
+.pill-human{background:var(--human-bg);color:var(--human);border:1px solid var(--human-br)}
+.pill-engine{background:var(--engine-bg);color:var(--engine);border:1px solid var(--engine-br)}
+/* table basse, volontairement plus discrète */
+.quiet table{background:#fbfcfd}
+.quiet thead th{background:#eef1f5;color:#66717f}
+.quiet tbody td{color:var(--ink-2)}
+.stamp{font-size:11.5px;color:var(--ink-3);padding:7px 0 0}
+.stamp b{color:var(--ink-2);font-weight:600}
+
+/* ---------- Boutons ---------- */
+button{font-family:inherit;font-size:12.5px;cursor:pointer;border-radius:2px;padding:6px 14px;
+  border:1px solid transparent;transition:background .12s}
+.btn-primary{background:var(--ns-blue);color:#fff;font-weight:500}
+.btn-primary:hover{background:var(--ns-blue-dk)}
+.btn-primary:disabled{background:#a9bcd4;cursor:not-allowed}
+.btn-ghost{background:var(--white);border-color:#adb8c6;color:var(--ink)}
+.btn-ghost:hover{background:#f0f3f7}
+.btn-link{background:none;border:0;color:var(--ns-blue);padding:2px 4px;text-decoration:underline;font-size:12px}
+:focus-visible{outline:2px solid var(--ns-blue);outline-offset:1px}
+
+/* ---------- Répartition ---------- */
+.split{background:var(--white);border:1px solid var(--rule);border-top:0}
+.split-in{padding:15px 16px;background:var(--human-bg);border-top:1px solid #ecd9b8}
+.split-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--human);
+  font-weight:700;margin:0 0 12px}
+.fields{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+.f label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--ink-2);margin-bottom:4px}
+.f input,.f select{font-family:'IBM Plex Mono',monospace;font-size:13px;padding:5px 8px;
+  border:1px solid #b6c0cd;border-radius:2px;background:#fff;width:110px}
+.f-wide input{width:150px}
+.check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+.preview{margin-top:14px;border-top:1px dashed #ddc8a4;padding-top:12px}
+.preview-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2);margin-bottom:7px}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{background:#fff;border:1px solid var(--human);border-left-width:3px;padding:5px 10px;
+  font-family:'IBM Plex Mono',monospace;font-size:12px}
+.chip b{color:var(--human)}
+/* tableau de lignes éditables */
+table.lines{border:1px solid var(--human-br);background:#fff}
+table.lines thead th{background:#f6ebd6;color:#7d5210;border:0}
+table.lines tbody td{border-top:1px solid #f0e2c8;padding:5px 8px}
+table.lines input{font-family:'IBM Plex Mono',monospace;font-size:12.5px;padding:4px 7px;
+  border:1px solid #cfd7e1;border-radius:2px;width:100%;background:#fff}
+table.lines input.bad{border-color:var(--alert);background:#fef7f6}
+.obs{font-size:11.5px;color:var(--ink-3)}
+.obs.warn{color:var(--human);font-weight:500}
+.obs.err{color:var(--alert);font-weight:500}
+.del{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:14px;padding:2px 6px;line-height:1}
+.del:hover{color:var(--alert)}
+.flag{margin-top:11px;padding:9px 12px;font-size:12px;border-left:4px solid}
+.flag-info{background:var(--engine-bg);border-left-color:var(--engine);color:#0c5757}
+.flag-over{background:var(--alert-bg);border-left-color:var(--alert);color:#7d2a26}
+.flag b{font-weight:600}
+.total{margin-top:11px;font-size:12.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ok{color:#1d6b3f;font-weight:600}
+.ko{color:var(--alert);font-weight:600}
+.note{background:#f4f6f9;border:1px solid var(--rule);border-top:0;padding:11px 15px;
+  font-size:12px;color:var(--ink-2)}
+
+/* ---------- Verrou ---------- */
+.lock{position:fixed;inset:0;background:rgba(28,36,48,.55);z-index:200;display:flex;
+  align-items:center;justify-content:center;padding:20px}
+.lock-box{background:#fff;max-width:440px;width:100%;border-top:4px solid var(--ns-blue);
+  padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.lock-box h3{margin:0 0 4px;font-size:15px}
+.lock-box p{margin:0 0 14px;font-size:12.5px;color:var(--ink-2)}
+.lock-steps{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-3)}
+.lock-steps div{padding:3px 0}
+.lock-steps .done{color:var(--engine)}
+.bar{height:3px;background:var(--rule-lt);margin:14px 0 0;overflow:hidden}
+.bar i{display:block;height:3px;background:var(--ns-blue);width:0;transition:width .4s linear}
+
+footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:11.5px;color:var(--ink-2)}
+footer p{margin:5px 0}
+@media (max-width:780px){
+  .legend{flex-direction:column}
+  .fields{flex-direction:column;align-items:stretch}
+  .f input,.f select{width:100%}
+  .combo,.combo input,.combo ul{width:100%}
+  .planbar .grow{margin-left:0;width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="crumb">Fabrication &nbsp;›&nbsp; Planification</div>
+    <h1>Séquencement des ordres planifiés</h1>
+  </div>
+  <div class="mock-flag">Maquette — données fictives</div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ ÉTAT DU PLAN ============ -->
+  <dl class="planbar">
+    <div class="pb"><dt>Dernier calcul</dt><dd id="lastRun" class="mono">10/08 08:12</dd></div>
+    <div class="pb"><dt>Arbitrages en attente</dt><dd id="basket">Aucun</dd></div>
+    <div class="pb"><dt>Niveaux à arbitrer</dt><dd id="levelsTodo" class="mono">—</dd></div>
+    <div class="grow">
+      <button class="btn-primary" id="btnRun" disabled>Recalculer le plan</button>
+      <button class="btn-ghost" id="btnReset">Rejouer la démonstration</button>
+    </div>
+  </dl>
+
+  <!-- ============ SÉLECTION ============ -->
+  <div class="picker">
+    <div class="combo">
+      <label for="artInput">Article à planifier</label>
+      <div class="combo-row">
+        <input id="artInput" type="text" role="combobox" aria-expanded="false" aria-controls="artList"
+               aria-autocomplete="list" autocomplete="off" placeholder="Code ou désignation…">
+        <button class="combo-toggle" id="artToggle" aria-label="Afficher la liste des articles">▼</button>
+      </div>
+      <ul id="artList" role="listbox" hidden></ul>
+    </div>
+    <span class="picker-hint" id="pickerHint"></span>
+  </div>
+
+  <div class="blank" id="blank">
+    <h3>Choisissez un article pour commencer</h3>
+    <p>Le premier chiffre du code donne le niveau : 7 produits finis, 5 semi-finis,
+       3 préparations, 1 matières premières.<br>
+       Traitez un niveau complet, puis recalculez le plan.</p>
+  </div>
+
+  <div id="content" hidden>
+    <dl class="context">
+      <div class="ctx"><dt>Article</dt><dd id="cArt">—</dd></div>
+      <div class="ctx"><dt>Niveau</dt><dd id="cLvl">—</dd></div>
+      <div class="ctx"><dt>Emplacement</dt><dd id="cLoc">—</dd></div>
+      <div class="ctx"><dt>Plan</dt><dd class="mono">729922</dd></div>
+      <div class="ctx"><dt>Horizon</dt><dd>180 jours</dd></div>
+    </dl>
+
+    <div class="legend">
+      <div class="lg-human">
+        <strong>Décidé par le planificateur</strong>
+        <span>Quantités et dates saisies ici. Firmées : le calcul ne les modifie plus.</span>
+      </div>
+      <div class="lg-engine">
+        <strong>Calculé par le moteur</strong>
+        <span>Propositions déduites du niveau supérieur, de la nomenclature et des délais.</span>
+      </div>
+    </div>
+
+    <section>
+      <div class="sec-head">
+        <h2>Propositions de l'article</h2>
+        <span class="spec">F1 · F2</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:34px"></th><th>Article</th>
+          <th class="num" style="width:90px">Quantité</th>
+          <th style="width:110px">Début</th><th style="width:110px">Fin</th>
+          <th style="width:110px">Origine</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="note" id="buyNote" hidden>
+        Article acheté : la proposition est un ordre d'achat. La répartition se négocie avec
+        le fournisseur, elle n'est pas traitée par cet écran.
+      </div>
+
+      <div class="split" id="splitPanel" hidden>
+        <div class="split-in">
+          <p class="split-title">Répartir la quantité</p>
+          <div class="fields">
+            <div class="f"><label for="mode">Méthode</label>
+              <select id="mode" style="width:170px">
+                <option value="perday">Quantité par jour</option>
+                <option value="lots">Nombre de lots</option>
+                <option value="free">Saisie libre</option>
+              </select></div>
+            <div class="f" id="fQty"><label for="qtyDay" id="lblQty">Quantité / jour</label>
+              <input id="qtyDay" class="mono" type="number" value="2" min="0" step="any"></div>
+            <div class="f f-wide" id="fFirst"><label for="firstDay">Premier jour</label>
+              <input id="firstDay" class="mono" type="text" value="01/09/2026"></div>
+            <div class="f" id="fWork"><label class="check" style="margin-bottom:6px">
+              <input type="checkbox" id="workdays" checked> Jours ouvrés seulement</label></div>
+            <button class="btn-ghost" id="btnPreview">Proposer une répartition</button>
+          </div>
+          <div class="preview" id="preview" hidden>
+            <div class="preview-h">Répartition — chaque ligne est modifiable</div>
+            <table class="lines"><thead><tr>
+              <th style="width:130px">Date</th><th style="width:120px">Quantité</th>
+              <th>Observation</th><th style="width:40px"></th>
+            </tr></thead><tbody id="lineBody"></tbody></table>
+            <button class="btn-link" id="btnAddLine">+ Ajouter une ligne</button>
+            <div class="total" id="total"></div>
+            <div style="margin-top:13px">
+              <button class="btn-primary" id="btnApply">Appliquer et firmer</button>
+              <button class="btn-link" id="btnCancel">Annuler</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="quiet">
+      <div class="sec-head sec-sub">
+        <h2>Composants — pour information</h2>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:52px">Niveau</th><th>Article</th>
+          <th class="num" style="width:90px">Quantité</th>
+          <th style="width:110px">Début</th><th style="width:110px">Fin</th>
+          <th style="width:110px">Origine</th>
+        </tr></thead>
+        <tbody id="comps"></tbody>
+      </table>
+      <p class="stamp" id="compStamp"></p>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>Journal des interventions</h2><span class="spec">F6</span></div>
+      <table>
+        <thead><tr><th style="width:120px">Horodatage</th><th style="width:140px">Utilisateur</th>
+          <th>Opération</th></tr></thead>
+        <tbody id="journal"></tbody>
+      </table>
+      <p class="stamp" id="journalEmpty">Aucune intervention depuis l'ouverture de l'écran.</p>
+    </section>
+  </div>
+</div>
+
+<footer>
+  <p><strong>Maquette de présentation.</strong> Aucun traitement réel. Codes, désignations, ratios de
+     nomenclature et délais sont fictifs. Le recalcul est simulé : en production, il est exécuté par
+     le moteur de planification et l'écran relit les propositions enregistrées.</p>
+  <p>Parcours : <span class="mono">72140</span> → répartir 2 par jour → appliquer → recalculer le plan
+     → sélectionner <span class="mono">50412</span>, qui présente désormais une proposition par jour de
+     production, à arbitrer à son tour.</p>
+</footer>
+
+<script>
+(function(){
+  'use strict';
+
+  var USER = 'B. — Planification';
+  var LEVELS = { '7':'Produits finis', '5':'Semi-finis', '3':'Préparations', '1':'Matières premières' };
+  var ORDER_OF_LEVELS = ['7','5','3','1'];
+
+  /* Le niveau est porté par le premier caractère du code article.
+     En production ce mapping doit être un paramètre, pas une valeur en dur. */
+  function levelOf(code){ return LEVELS[code.charAt(0)] ? code.charAt(0) : '?'; }
+
+  var ITEMS = [
+    {code:'72140', name:'Plat cuisiné 500 g',        loc:'Acquigny',      kind:'make',
+      comps:[{code:'50412',per:2.4,lead:4},{code:'50388',per:1.8,lead:4}]},
+    {code:'72208', name:'Soupe de légumes 1 L',      loc:'Acquigny',      kind:'make',
+      comps:[{code:'50501',per:2,lead:4}]},
+    {code:'73015', name:'Gratin dauphinois 800 g',   loc:'Heudebouville', kind:'make',
+      comps:[{code:'50620',per:1.5,lead:4}]},
+    {code:'71187', name:'Quiche lorraine 400 g',     loc:'Acquigny',      kind:'make',
+      comps:[{code:'50290',per:1,lead:4}]},
+
+    {code:'50412', name:'Sauce tomate basilic',      loc:'Acquigny',      kind:'make',
+      comps:[{code:'31102',per:4,lead:2}]},
+    {code:'50388', name:'Base pâtes fraîches',       loc:'Acquigny',      kind:'make',
+      comps:[{code:'31210',per:2.5,lead:2}]},
+    {code:'50501', name:'Bouillon de légumes',       loc:'Acquigny',      kind:'make',
+      comps:[{code:'31240',per:2.5,lead:2}]},
+    {code:'50620', name:'Appareil à gratin',         loc:'Heudebouville', kind:'make',
+      comps:[{code:'31388',per:5,lead:2}]},
+    {code:'50290', name:'Pâte brisée',               loc:'Acquigny',      kind:'make',
+      comps:[{code:'31210',per:1.2,lead:2}]},
+
+    {code:'31102', name:'Concentré de tomate préparé',loc:'Acquigny',     kind:'make',
+      comps:[{code:'14501',per:1.4,lead:3}]},
+    {code:'31210', name:'Farine tamisée',            loc:'Acquigny',      kind:'make',
+      comps:[{code:'14710',per:1.05,lead:3}]},
+    {code:'31240', name:'Carottes taillées',         loc:'Acquigny',      kind:'make',
+      comps:[{code:'14620',per:1.15,lead:3}]},
+    {code:'31388', name:'Pommes de terre parées',    loc:'Heudebouville', kind:'make',
+      comps:[{code:'14660',per:1.25,lead:3}]},
+
+    {code:'14501', name:'Tomates fraîches',          loc:'Acquigny',      kind:'buy', comps:[]},
+    {code:'14710', name:'Farine T55',                loc:'Acquigny',      kind:'buy', comps:[]},
+    {code:'14620', name:'Carottes brutes',           loc:'Acquigny',      kind:'buy', comps:[]},
+    {code:'14660', name:'Pommes de terre brutes',    loc:'Heudebouville', kind:'buy', comps:[]}
+  ];
+  var BY_CODE = {};
+  ITEMS.forEach(function(i){ BY_CODE[i.code] = i; });
+
+  var SEED = [
+    {code:'72140', qty:10, start:'07/09/2026', origin:'engine'},
+    {code:'72208', qty:48, start:'12/09/2026', origin:'engine'},
+    {code:'73015', qty:30, start:'14/09/2026', origin:'engine'},
+    {code:'73015', qty:12, start:'21/09/2026', origin:'engine'},
+    {code:'71187', qty:6,  start:'02/09/2026', origin:'human'},
+    {code:'71187', qty:6,  start:'03/09/2026', origin:'human'},
+    {code:'71187', qty:6,  start:'04/09/2026', origin:'human'}
+  ];
+
+  var orders, basket, lastRun, current, selected, proposal, journal, cursor = -1;
+
+  /* ---------------- dates ---------------- */
+  function parse(dmy){ var p = dmy.split('/'); return new Date(+p[2], +p[1]-1, +p[0]); }
+  function stamp(d){ return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); }
+  function fwd(dmy, add, skipWe){
+    var d = parse(dmy), n = 0;
+    while (n < add){ d.setDate(d.getDate()+1);
+      if (skipWe && (d.getDay()===0||d.getDay()===6)) continue; n++; }
+    return stamp(d);
+  }
+  function back(dmy, days){ var d = parse(dmy); d.setDate(d.getDate()-days); return stamp(d); }
+  function nowShort(){ var n = new Date();
+    return ('0'+n.getDate()).slice(-2)+'/'+('0'+(n.getMonth()+1)).slice(-2)+' '
+         + ('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2); }
+  function fmt(n){ return String(Math.round(n*100)/100).replace('.', ','); }
+
+  /* ---------------- moteur simulé ----------------
+     Descente niveau par niveau. Les lignes firmées d'un article sont
+     conservées ; sinon ses propositions sont régénérées depuis le
+     niveau supérieur. C'est ce que fait le moteur réel. */
+  function recompute(){
+    ['7','5','3'].forEach(function(lvl){
+      var touched = {};
+      orders.filter(function(o){ return levelOf(o.code) === lvl; }).forEach(function(o){
+        (BY_CODE[o.code].comps || []).forEach(function(c){
+          if (!touched[c.code]) touched[c.code] = [];
+          var d = back(o.start, c.lead);
+          touched[c.code].push({ code:c.code, qty:o.qty * c.per, start:d, origin:'engine' });
+        });
+      });
+      Object.keys(touched).forEach(function(code){
+        var hasHuman = orders.some(function(o){ return o.code === code && o.origin === 'human'; });
+        if (hasHuman) return;                       // décision humaine préservée
+        orders = orders.filter(function(o){ return !(o.code === code && o.origin === 'engine'); });
+        orders = orders.concat(touched[code]);
+      });
+    });
+    orders.sort(function(a,b){
+      if (a.code !== b.code) return a.code < b.code ? -1 : 1;
+      return parse(a.start) - parse(b.start);
+    });
+  }
+
+  function reset(){
+    orders = SEED.map(function(o){ return { code:o.code, qty:o.qty, start:o.start, origin:o.origin }; });
+    basket = {}; journal = []; current = null; selected = null; proposal = null;
+    lastRun = '10/08 08:12';
+    recompute();
+    document.getElementById('artInput').value = '';
+    document.getElementById('pickerHint').textContent = '';
+    document.getElementById('content').hidden = true;
+    document.getElementById('blank').hidden = false;
+    closeList();
+    paintPlan();
+    renderJournal();
+  }
+
+  function ordersOf(code){ return orders.filter(function(o){ return o.code === code; }); }
+  function pendingOf(code){ return ordersOf(code).filter(function(o){ return o.origin === 'engine'; }).length; }
+  function basketSize(){ return Object.keys(basket).length; }
+
+  /* ---------------- barre d'état ---------------- */
+  function paintPlan(){
+    document.getElementById('lastRun').textContent = lastRun;
+    var n = basketSize();
+    var b = document.getElementById('basket');
+    b.textContent = n ? (n + (n>1 ? ' articles modifiés' : ' article modifié')) : 'Aucun';
+    b.className = n ? 'warn' : '';
+    document.getElementById('btnRun').disabled = (n === 0);
+
+    var todo = ORDER_OF_LEVELS.filter(function(l){
+      return ITEMS.some(function(i){
+        return levelOf(i.code) === l && i.kind === 'make' && pendingOf(i.code) > 0;
+      });
+    });
+    document.getElementById('levelsTodo').textContent = todo.length ? todo.join(' · ') : 'aucun';
+  }
+
+  /* ---------------- sélecteur ---------------- */
+  var input = document.getElementById('artInput'), list = document.getElementById('artList');
+
+  function openList(filter){
+    var q = (filter||'').toLowerCase(), html = '', any = false;
+    ORDER_OF_LEVELS.forEach(function(lvl){
+      var hits = ITEMS.filter(function(i){
+        if (levelOf(i.code) !== lvl) return false;
+        return !q || (i.code+' '+i.name+' '+i.loc).toLowerCase().indexOf(q) > -1;
+      });
+      if (!hits.length) return;
+      any = true;
+      html += '<li class="grp">' + lvl + ' — ' + LEVELS[lvl] + '</li>';
+      hits.forEach(function(i){
+        var n = pendingOf(i.code), badge;
+        if (i.kind === 'buy') badge = '<span class="badge badge-buy">Achat</span>';
+        else if (n) badge = '<span class="badge badge-todo">'+n+' à arbitrer</span>';
+        else badge = '<span class="badge badge-done">Firmé</span>';
+        html += '<li class="opt" role="option" data-code="'+i.code+'">'
+             +  '<span class="code"><b>'+i.code.charAt(0)+'</b>'+i.code.slice(1)+'</span>'
+             +  '<span class="nm">'+i.name+'<em>'+i.loc+'</em></span>' + badge + '</li>';
+      });
+    });
+    list.innerHTML = any ? html : '<li class="none">Aucun article ne correspond</li>';
+    list.hidden = false; input.setAttribute('aria-expanded','true'); cursor = -1;
+  }
+  function closeList(){ list.hidden = true; input.setAttribute('aria-expanded','false'); cursor = -1; }
+
+  input.addEventListener('input', function(){ openList(this.value); });
+  input.addEventListener('focus', function(){ openList(this.value); });
+  document.getElementById('artToggle').addEventListener('click', function(){
+    if (list.hidden){ input.focus(); openList(''); } else closeList();
+  });
+  input.addEventListener('keydown', function(e){
+    var opts = list.querySelectorAll('li.opt');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      if (list.hidden){ openList(this.value); opts = list.querySelectorAll('li.opt'); }
+      if (!opts.length) return;
+      cursor += (e.key === 'ArrowDown' ? 1 : -1);
+      if (cursor < 0) cursor = opts.length-1;
+      if (cursor >= opts.length) cursor = 0;
+      Array.prototype.forEach.call(opts, function(li,i){ li.classList.toggle('cursor', i===cursor); });
+      opts[cursor].scrollIntoView({block:'nearest'});
+    } else if (e.key === 'Enter'){
+      if (cursor > -1 && opts[cursor]){ e.preventDefault(); pick(opts[cursor].dataset.code); }
+    } else if (e.key === 'Escape'){ closeList(); }
+  });
+  list.addEventListener('click', function(e){
+    var li = e.target.closest('li.opt'); if (li) pick(li.dataset.code);
+  });
+  document.addEventListener('click', function(e){ if (!e.target.closest('.combo')) closeList(); });
+
+  function pick(code){
+    current = BY_CODE[code]; selected = null; proposal = null;
+    input.value = code + ' · ' + current.name;
+    closeList();
+    document.getElementById('blank').hidden = true;
+    document.getElementById('content').hidden = false;
+    document.getElementById('cArt').textContent = code + ' · ' + current.name;
+    document.getElementById('cLvl').textContent = levelOf(code) + ' — ' + LEVELS[levelOf(code)];
+    document.getElementById('cLoc').textContent = current.loc;
+    document.getElementById('splitPanel').hidden = true;
+    document.getElementById('preview').hidden = true;
+    document.getElementById('buyNote').hidden = (current.kind !== 'buy');
+    var n = pendingOf(code);
+    document.getElementById('pickerHint').textContent = current.kind === 'buy'
+      ? 'Article acheté'
+      : (n ? n + (n>1 ? ' propositions à arbitrer' : ' proposition à arbitrer')
+           : 'Toutes les propositions sont firmées');
+    render();
+  }
+
+  /* ---------------- rendu ---------------- */
+  function originCell(o){
+    return o === 'human' ? '<span class="pill pill-human">Firmé</span>'
+                         : '<span class="pill pill-engine">Moteur</span>';
+  }
+
+  function render(){
+    var mine = ordersOf(current.code), h = '';
+    mine.forEach(function(o, i){
+      var isSel = (selected === i);
+      h += '<tr class="'+(isSel?'sel ':'')+(o.origin==='human'?'is-human':'is-engine')+'">'
+        +  '<td>' + (current.kind === 'buy' ? ''
+             : '<input type="radio" name="pick" aria-label="Sélectionner cette proposition" '
+               + (isSel?'checked':'') + ' data-pick="'+i+'">') + '</td>'
+        +  '<td class="mono">'+current.code+'</td>'
+        +  '<td class="num mono">'+fmt(o.qty)+'</td>'
+        +  '<td class="mono">'+o.start+'</td><td class="mono">'+o.start+'</td>'
+        +  '<td>'+originCell(o.origin)+'</td></tr>';
+    });
+    if (!mine.length) h = '<tr><td colspan="6" style="color:#8a95a3;font-style:italic">'
+        + 'Aucune proposition sur l\'horizon.</td></tr>';
+    document.getElementById('rows').innerHTML = h;
+
+    var c = '';
+    (current.comps || []).forEach(function(cp){
+      ordersOf(cp.code).forEach(function(o){
+        var it = BY_CODE[cp.code];
+        c += '<tr class="'+(o.origin==='human'?'is-human':'is-engine')+'">'
+          +  '<td class="mono">'+levelOf(cp.code)+'</td>'
+          +  '<td><span class="mono">'+cp.code+'</span> · '+it.name+'</td>'
+          +  '<td class="num mono">'+fmt(o.qty)+'</td>'
+          +  '<td class="mono">'+o.start+'</td><td class="mono">'+o.start+'</td>'
+          +  '<td>'+originCell(o.origin)+'</td></tr>';
+      });
+    });
+    if (!c) c = '<tr><td colspan="6" style="color:#8a95a3;font-style:italic">'
+        + 'Aucun composant fabriqué.</td></tr>';
+    document.getElementById('comps').innerHTML = c;
+    document.getElementById('compStamp').innerHTML =
+      'Situation issue du calcul du <b>' + lastRun + '</b>. '
+      + 'Pour ajuster un composant, sélectionnez-le après le prochain recalcul.';
+
+    paintPlan();
+  }
+
+  function renderJournal(){
+    var j = '';
+    journal.forEach(function(e){
+      j += '<tr><td class="mono">'+e.ts+'</td><td>'+e.user+'</td><td>'+e.op+'</td></tr>';
+    });
+    document.getElementById('journal').innerHTML = j;
+    document.getElementById('journalEmpty').hidden = journal.length > 0;
+  }
+  function log(op){ journal.unshift({ ts:nowShort(), user:USER, op:op }); renderJournal(); }
+
+  /* ---------------- interactions ---------------- */
+  document.getElementById('rows').addEventListener('change', function(e){
+    var i = e.target.getAttribute('data-pick'); if (i === null) return;
+    selected = +i;
+    var o = ordersOf(current.code)[selected];
+    document.getElementById('splitPanel').hidden = (o.origin === 'human');
+    document.getElementById('preview').hidden = true;
+    if (o.origin === 'engine') document.getElementById('firstDay').value = o.start;
+    render();
+  });
+
+  document.getElementById('mode').addEventListener('change', function(){
+    var m = this.value;
+    document.getElementById('lblQty').textContent =
+      m === 'lots' ? 'Nombre de lots' : 'Quantité / jour';
+    var auto = (m !== 'free');
+    document.getElementById('fQty').hidden = !auto;
+    document.getElementById('fWork').hidden = !auto;
+    document.getElementById('btnPreview').textContent =
+      auto ? 'Proposer une répartition' : 'Repartir de la proposition';
+    document.getElementById('preview').hidden = true;
+  });
+
+  /* ---- construction de la proposition initiale ---- */
+  document.getElementById('btnPreview').addEventListener('click', function(){
+    var o = ordersOf(current.code)[selected]; if (!o) return;
+    var mode = document.getElementById('mode').value,
+        first = document.getElementById('firstDay').value.trim();
+
+    if (mode === 'free'){
+      proposal = [{ qty:o.qty, date:first || o.start }];
+    } else {
+      var v = Math.max(0.0001, +document.getElementById('qtyDay').value || 1),
+          skip = document.getElementById('workdays').checked, per, count;
+      if (mode === 'perday'){ per = v; count = Math.ceil(o.qty / v); }
+      else { count = Math.max(1, Math.round(v)); per = o.qty / count; }
+      proposal = [];
+      var rest = o.qty;
+      for (var k = 0; k < count; k++){
+        var q = Math.min(per, rest); rest -= q;
+        proposal.push({ qty:Math.round(q*1000)/1000, date:fwd(first, k, skip) });
+      }
+    }
+    document.getElementById('preview').hidden = false;
+    renderLines();
+  });
+
+  document.getElementById('btnAddLine').addEventListener('click', function(){
+    var last = proposal[proposal.length-1];
+    proposal.push({ qty:0, date: last ? fwd(last.date, 1, false) : '' });
+    renderLines();
+  });
+
+  /* ---- tableau éditable + signalements, aucun blocage ---- */
+  function dateStatus(dmy){
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dmy)) return { cls:'err', txt:'Format attendu JJ/MM/AAAA' };
+    var d = parse(dmy);
+    if (isNaN(d.getTime())) return { cls:'err', txt:'Date invalide' };
+    var today = new Date(); today.setHours(0,0,0,0);
+    if (d < today) return { cls:'warn', txt:'Antérieure à aujourd\'hui' };
+    var horizon = new Date(today); horizon.setDate(horizon.getDate() + 180);
+    if (d > horizon) return { cls:'warn', txt:'Hors horizon de planification' };
+    if (d.getDay() === 0 || d.getDay() === 6) return { cls:'', txt:'Week-end' };
+    return { cls:'', txt:'' };
+  }
+
+  function renderLines(){
+    var h = '';
+    proposal.forEach(function(l, i){
+      var st = dateStatus(l.date);
+      h += '<tr>'
+        +  '<td><input class="mono'+(st.cls==='err'?' bad':'')+'" data-ln-date="'+i+'" value="'+l.date+'"'
+        +  ' aria-label="Date de la ligne '+(i+1)+'"></td>'
+        +  '<td><input class="mono" type="number" step="any" min="0" data-ln-qty="'+i+'" value="'+l.qty+'"'
+        +  ' aria-label="Quantité de la ligne '+(i+1)+'"></td>'
+        +  '<td><span class="obs '+st.cls+'">'+st.txt+'</span></td>'
+        +  '<td>'+(proposal.length > 1
+             ? '<button class="del" data-ln-del="'+i+'" aria-label="Supprimer la ligne '+(i+1)+'">×</button>'
+             : '')+'</td></tr>';
+    });
+    document.getElementById('lineBody').innerHTML = h;
+    paintTotal();
+  }
+
+  function paintTotal(){
+    var o = ordersOf(current.code)[selected];
+    var sum = proposal.reduce(function(a,b){ return a + (+b.qty || 0); }, 0);
+    var diff = Math.round((sum - o.qty) * 1000) / 1000;
+    var html = '<span class="mono">'+proposal.length+' ligne(s) · total '+fmt(sum)
+             + ' &nbsp;/&nbsp; origine '+fmt(o.qty)+'</span>';
+    if (Math.abs(diff) < 0.005){
+      html += '<span class="ok">✓ identique à la quantité d\'origine</span>';
+    }
+    document.getElementById('total').innerHTML = html;
+
+    var flag = '';
+    if (diff < -0.005){
+      flag = '<div class="flag flag-info">Répartition inférieure de <b>'+fmt(-diff)+'</b>. '
+           + 'Le besoin restant sera reproposé par le moteur au prochain recalcul.</div>';
+    } else if (diff > 0.005){
+      flag = '<div class="flag flag-over">Sur-approvisionnement de <b>'+fmt(diff)+'</b>. '
+           + 'Validation possible, l\'écart sera inscrit au journal.</div>';
+    }
+    var old = document.getElementById('flagZone');
+    if (old) old.remove();
+    if (flag) document.getElementById('total')
+      .insertAdjacentHTML('afterend', '<div id="flagZone">'+flag+'</div>');
+
+    // aucun blocage : le bouton reste actif dès qu'il y a une quantité
+    document.getElementById('btnApply').disabled = (sum <= 0);
+  }
+
+  document.getElementById('lineBody').addEventListener('input', function(e){
+    var t = e.target;
+    if (t.hasAttribute('data-ln-qty')){
+      proposal[+t.getAttribute('data-ln-qty')].qty = +t.value || 0;
+      paintTotal();
+    } else if (t.hasAttribute('data-ln-date')){
+      var i = +t.getAttribute('data-ln-date');
+      proposal[i].date = t.value.trim();
+      var st = dateStatus(proposal[i].date);
+      t.classList.toggle('bad', st.cls === 'err');
+      var cell = t.closest('tr').querySelector('.obs');
+      cell.className = 'obs ' + st.cls; cell.textContent = st.txt;
+    }
+  });
+
+  document.getElementById('lineBody').addEventListener('click', function(e){
+    var b = e.target.closest('[data-ln-del]'); if (!b) return;
+    proposal.splice(+b.getAttribute('data-ln-del'), 1);
+    renderLines();
+  });
+
+  document.getElementById('btnCancel').addEventListener('click', function(){
+    document.getElementById('preview').hidden = true;
+  });
+
+  document.getElementById('btnApply').addEventListener('click', function(){
+    var mine = ordersOf(current.code), o = mine[selected], code = current.code;
+    var keep = proposal.filter(function(l){ return (+l.qty || 0) > 0; });
+    if (!keep.length) return;
+    var sum = keep.reduce(function(a,b){ return a + (+b.qty||0); }, 0);
+    var diff = Math.round((sum - o.qty) * 1000) / 1000;
+
+    orders.splice(orders.indexOf(o), 1);
+    keep.forEach(function(l){
+      orders.push({ code:code, qty:+l.qty, start:l.date, origin:'human' });
+    });
+    basket[code] = true;
+
+    var msg = 'Répartition de ' + fmt(o.qty) + ' sur ' + code + ' en ' + keep.length + ' lignes firmées';
+    if (diff > 0.005)  msg += ' — sur-approvisionnement de ' + fmt(diff);
+    if (diff < -0.005) msg += ' — couverture partielle, reste ' + fmt(-diff);
+    log(msg);
+
+    selected = null; proposal = null;
+    document.getElementById('splitPanel').hidden = true;
+    document.getElementById('preview').hidden = true;
+    render();
+  });
+
+  /* ---------------- recalcul + verrou ---------------- */
+  document.getElementById('btnRun').addEventListener('click', function(){
+    var n = basketSize();
+    var lock = document.createElement('div');
+    lock.className = 'lock';
+    lock.innerHTML = '<div class="lock-box" role="alertdialog" aria-live="assertive">'
+      + '<h3>Recalcul du plan en cours</h3>'
+      + '<p>Lancé par ' + USER + ' à ' + nowShort() + ' — ' + n
+      + (n>1 ? ' articles arbitrés' : ' article arbitré')
+      + '. L\'écran est indisponible jusqu\'à la fin du traitement.</p>'
+      + '<div class="lock-steps" id="lockSteps"></div>'
+      + '<div class="bar"><i id="lockBar"></i></div></div>';
+    document.body.appendChild(lock);
+
+    var msgs = ['Actualisation du référentiel de planification…',
+                'Lancement du plan 729922…',
+                'Régénération des propositions…'];
+    var box = lock.querySelector('#lockSteps'), bar = lock.querySelector('#lockBar');
+    msgs.forEach(function(m, i){
+      setTimeout(function(){
+        box.insertAdjacentHTML('beforeend', '<div class="done">✓ ' + m + '</div>');
+        bar.style.width = Math.round((i+1)/msgs.length*100) + '%';
+        if (i === msgs.length-1) setTimeout(function(){ finish(lock); }, 500);
+      }, 700*(i+1));
+    });
+  });
+
+  function finish(lock){
+    recompute();
+    lastRun = nowShort();
+    var n = basketSize();
+    basket = {};
+    log('Recalcul du plan — ' + n + (n>1 ? ' arbitrages pris en compte' : ' arbitrage pris en compte'));
+    lock.remove();
+    if (current) render(); else paintPlan();
+  }
+
+  document.getElementById('btnReset').addEventListener('click', reset);
+
+  reset();
+})();
+</script>
+</body>
+</html>

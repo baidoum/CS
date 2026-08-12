@@ -1,0 +1,12 @@
+<scriptdeployment scriptid="customdeploy_sl_planif_arbitrage">
+  <status>TESTING</status>
+  <title>Planif Arbitrage - Séquencement et fractionnement</title>
+  <isdeployed>T</isdeployed>
+  <loglevel>DEBUG</loglevel>
+  <executioncontext>
+    <executioncontextitem>WEBAPPLICATION</executioncontextitem>
+  </executioncontext>
+  <audience>
+    <allroles>F</allroles>
+  </audience>
+</scriptdeployment>

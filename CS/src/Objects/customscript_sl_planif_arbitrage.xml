@@ -1,0 +1,63 @@
+<suiteletscript scriptid="customscript_sl_planif_arbitrage">
+  <name>Planif Arbitrage - Séquencement et fractionnement</name>
+  <scriptfile>[/SuiteScripts/PlanifArbitrage/SL_Planif_Arbitrage.js]</scriptfile>
+  <description>Écran d'arbitrage des commandes planifiées (fractionnement/replanification), niveau de nomenclature par niveau. Spec Fonctionnelle Replanification v0.2.</description>
+  <isinactive>F</isinactive>
+  <notifyadmins>F</notifyadmins>
+  <notifyowner>T</notifyowner>
+  <scriptcustomfields>
+    <scriptcustomfield scriptid="custscript_planif_level_map">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: Correspondance préfixe/niveau</label>
+      <defaultvalue>7:Produits finis:make,5:Semi-finis:make,3:Préparations:make,1:Matières premières:buy</defaultvalue>
+      <description>Liste "préfixe:libellé:make|buy" séparée par des virgules. Section 5 : convention de codification, jamais codée en dur. Un préfixe absent apparaît dans son propre groupe "non reconnu", jamais masqué.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_level_order">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: Ordre du cycle d'arbitrage</label>
+      <defaultvalue>7,5,3</defaultvalue>
+      <description>Ordre de traitement des niveaux arbitrables (RG3/RG4), niveaux achetés exclus. Indépendant de la correspondance préfixe/libellé.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_level_unknown_label">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: Libellé niveau non reconnu</label>
+      <defaultvalue>Niveau non reconnu</defaultvalue>
+      <description>Libellé du groupe affiché pour un préfixe de code article absent de la correspondance préfixe/niveau.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_supply_plan_def_id">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: Id Supply Plan Definition</label>
+      <defaultvalue>729922</defaultvalue>
+      <description>Identifiant interne de la Supply Plan Definition ciblée (729922 sur le compte sandbox de référence).</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_horizon_days">
+      <fieldtype>INTEGER</fieldtype>
+      <label>Planif: Horizon de planification (jours)</label>
+      <defaultvalue>180</defaultvalue>
+      <description>Horizon de planification en jours, utilisé pour le signalement F3 d'une date hors horizon.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_plannedorder_table">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: Table SuiteQL plannedorder</label>
+      <defaultvalue>plannedorder</defaultvalue>
+      <description>Nom de table SuiteQL pour la lecture des commandes planifiées - non confirmé (section 10), point de correction unique si SuiteQL rejette ce nom (repli automatique sur N/search dans ce cas).</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_use_pegging">
+      <fieldtype>CHECKBOX</fieldtype>
+      <label>Planif: Utiliser le pegging pour F8</label>
+      <defaultvalue>T</defaultvalue>
+      <description>Active la tentative de lecture des composants (F8) via le pegging du MRP avant repli sur le filtrage fenêtre/article/emplacement (section 10).</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_supply_plan_url">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: URL de repli Supply Plan Definition</label>
+      <description>URL de l'écran standard de la Supply Plan Definition, utilisée en repli pour F6 si le lancement par N/action est indisponible. À renseigner après confirmation sur le compte.</description>
+    </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_page_size">
+      <fieldtype>INTEGER</fieldtype>
+      <label>Planif: Articles par groupe de niveau</label>
+      <defaultvalue>200</defaultvalue>
+      <description>Nombre d'articles affichés par groupe de niveau dans le sélecteur F1 avant défilement.</description>
+    </scriptcustomfield>
+  </scriptcustomfields>
+</suiteletscript>
