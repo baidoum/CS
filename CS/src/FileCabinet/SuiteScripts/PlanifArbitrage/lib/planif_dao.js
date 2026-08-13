@@ -333,26 +333,47 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // Le nom exact du champ "emplacement" dans la sous-liste assembly n'est
     // pas confirmé - tenté en premier, puis repli sans lui si la recherche
     // échoue (variante invalide plutôt que 0 résultat silencieux).
+    // 'assembly'/'location'/'masterdefault' sont des champs de la sous-liste
+    // "assembly" du BOM (constaté : "Malformed search filter expression" en
+    // filtre direct) - ils doivent être atteints via une jointure explicite
+    // dont le nom n'est pas confirmé. 'assembly' est tenté en premier
+    // (nom de la sous-liste elle-même, cas le plus courant en N/search),
+    // avant un repli sur 'assemblyitem'.
     function resolveBomId(itemId, locationId) {
-        var variants = [
-            { label: 'assembly + location', filters: [
-                ['assembly', 'anyof', itemId], ['isinactive', 'is', 'F'], ['location', 'anyof', locationId]
-            ] },
-            { label: 'assembly seul', filters: [
-                ['assembly', 'anyof', itemId], ['isinactive', 'is', 'F']
-            ] }
-        ];
+        // Pas de filtre sur l'emplacement : le champ n'est pas toujours
+        // renseigné sur la ligne "assembly" (BOM disponible pour tous les
+        // emplacements) - filtrer dessus exclurait à tort ces BOM. On ne
+        // filtre que par article, et on départage un éventuel doublon via
+        // masterdefault. locationId n'est donc plus utilisé ici - conservé
+        // dans la signature pour ne pas changer l'appelant, et parce qu'il
+        // reste pertinent en aval (lecture des plannedorder du composant,
+        // elle-même bien scopée par emplacement).
+        var joinIds = ['assembly', 'assemblyitem'];
+        var variants = joinIds.map(function (join) {
+            return {
+                label: 'jointure "' + join + '"',
+                join: join,
+                filters: [
+                    search.createFilter({ name: 'internalid', join: join, operator: 'anyof', values: [itemId] }),
+                    search.createFilter({ name: 'isinactive', operator: 'is', values: false })
+                ]
+            };
+        });
+
         for (var i = 0; i < variants.length; i++) {
             try {
                 var rows = [];
                 search.create({
                     type: 'bom',
                     filters: variants[i].filters,
-                    columns: ['internalid', 'masterdefault']
+                    columns: [
+                        search.createColumn({ name: 'internalid' }),
+                        search.createColumn({ name: 'masterdefault', join: variants[i].join })
+                    ]
                 }).run().each(function (result) {
                     rows.push({
                         id: result.getValue({ name: 'internalid' }),
-                        masterDefault: result.getValue({ name: 'masterdefault' }) === true
+                        masterDefault: result.getValue({ name: 'masterdefault', join: variants[i].join }) === true
                     });
                     return true;
                 });
@@ -360,6 +381,10 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                     log.audit('planif_dao - resolveBomId : variante retenue',
                         variants[i].label + ' (' + rows.length + ' résultat(s))');
                     var preferred = rows.filter(function (r) { return r.masterDefault; })[0];
+                    if (!preferred && rows.length > 1) {
+                        log.audit('planif_dao - resolveBomId : plusieurs BOM sans masterdefault, le premier est retenu',
+                            'itemId=' + itemId + ' ids=' + rows.map(function (r) { return r.id; }).join(','));
+                    }
                     return preferred ? preferred.id : rows[0].id;
                 }
             } catch (e) {
