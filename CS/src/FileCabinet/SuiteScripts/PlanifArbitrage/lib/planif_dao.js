@@ -318,63 +318,120 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // section 10) - dataSource is always returned so the UI never silently
     // presents an approximation as certain.
 
-    // Premier essai (bom/bomrevision/bomrevisioncomponent en recherche
-    // séparée) invalide sur ce compte - repli sur la nomenclature portée
-    // directement par l'article : sous-liste "Components" (id interne
-    // 'member') du record article lui-même. C'est le mécanisme standard et
-    // le plus fiable, que la fonctionnalité Bill of Materials dédiée soit
-    // utilisée ou non - NetSuite alimente/reflète cette sous-liste dans les
-    // deux cas.
+    // Constaté via NetSuite Field Explorer (2026-08-13) sur un BOM et une
+    // BOM Revision réels :
+    //   - record `bom` : sous-liste "assembly" reliant l'article (champ
+    //     `assembly`, ex. "15572") - et l'emplacement d'après l'utilisateur -
+    //     à ce BOM, avec un indicateur `masterdefault`.
+    //   - record `bomrevision` : champ corps `billofmaterials` (id du BOM
+    //     parent), sous-liste "component" portant les lignes de composants.
+    // Tentatives précédentes (bom/bomrevision/bomrevisioncomponent comme
+    // types de recherche indépendants, puis sous-liste "member" de
+    // l'article lui-même) invalides sur ce compte - remplacées ici par ce
+    // schéma confirmé.
 
-    // Le "type" générique d'un article (recherche) ne correspond pas
-    // directement au type de record chargeable (record.load) - un article
-    // Assembly confirmé sur un plannedorder réel (dump section 9, itemtype
-    // "Assembly") donne 'assemblyitem' ; les variantes numéro de lot/série
-    // sont ajoutées par prudence, jamais rencontrées mais plausibles en
-    // agroalimentaire (traçabilité).
-    var ITEM_TYPE_TO_RECORD_TYPE = {
-        'Assembly': 'assemblyitem',
-        'LotNumberedAssembly': 'lotnumberedassemblyitem',
-        'SerializedAssembly': 'serializedassemblyitem',
-        'Kit': 'kititem'
-    };
-
-    function resolveLoadableItemType(itemId) {
-        try {
-            var result = search.lookupFields({ type: search.Type.ITEM, id: itemId, columns: ['type'] });
-            var typeValue = result.type && result.type[0] && result.type[0].value;
-            return ITEM_TYPE_TO_RECORD_TYPE[typeValue] || null;
-        } catch (e) {
-            log.error('planif_dao - resolveLoadableItemType failed', 'itemId=' + itemId + ' : ' + e.message);
-            return null;
+    // Le nom exact du champ "emplacement" dans la sous-liste assembly n'est
+    // pas confirmé - tenté en premier, puis repli sans lui si la recherche
+    // échoue (variante invalide plutôt que 0 résultat silencieux).
+    function resolveBomId(itemId, locationId) {
+        var variants = [
+            { label: 'assembly + location', filters: [
+                ['assembly', 'anyof', itemId], ['isinactive', 'is', 'F'], ['location', 'anyof', locationId]
+            ] },
+            { label: 'assembly seul', filters: [
+                ['assembly', 'anyof', itemId], ['isinactive', 'is', 'F']
+            ] }
+        ];
+        for (var i = 0; i < variants.length; i++) {
+            try {
+                var rows = [];
+                search.create({
+                    type: 'bom',
+                    filters: variants[i].filters,
+                    columns: ['internalid', 'masterdefault']
+                }).run().each(function (result) {
+                    rows.push({
+                        id: result.getValue({ name: 'internalid' }),
+                        masterDefault: result.getValue({ name: 'masterdefault' }) === true
+                    });
+                    return true;
+                });
+                if (rows.length) {
+                    log.audit('planif_dao - resolveBomId : variante retenue',
+                        variants[i].label + ' (' + rows.length + ' résultat(s))');
+                    var preferred = rows.filter(function (r) { return r.masterDefault; })[0];
+                    return preferred ? preferred.id : rows[0].id;
+                }
+            } catch (e) {
+                log.error('planif_dao - resolveBomId : variante échouée', variants[i].label + ' : ' + e.message);
+            }
         }
+        return null;
     }
 
-    function getDirectComponents(itemId) {
-        var recordType = resolveLoadableItemType(itemId);
-        if (!recordType) {
-            log.audit('planif_dao - getDirectComponents : type d’article non reconnu comme fabriqué', 'itemId=' + itemId);
-            return [];
+    // Révision active la plus récente (par date d'effet) pour ce BOM - la
+    // gestion fine de la date d'effet courante (vs. une révision future
+    // déjà créée) n'est pas approfondie ici, première version.
+    function resolveActiveBomRevisionId(bomId) {
+        var revisionId = null;
+        try {
+            search.create({
+                type: 'bomrevision',
+                filters: [['billofmaterials', 'anyof', bomId], ['isinactive', 'is', 'F']],
+                columns: [
+                    search.createColumn({ name: 'internalid' }),
+                    search.createColumn({ name: 'effectivestartdate', sort: search.Sort.DESC })
+                ]
+            }).run().each(function (result) {
+                revisionId = result.getValue({ name: 'internalid' });
+                return false; // le plus récent d'abord (tri desc)
+            });
+        } catch (e) {
+            log.error('planif_dao - resolveActiveBomRevisionId failed', 'bomId=' + bomId + ' : ' + e.message);
         }
+        return revisionId;
+    }
 
+    function readComponentsFromBomRevision(revisionId) {
         var componentIds = [];
         try {
-            var itemRecord = record.load({ type: recordType, id: itemId });
-            var lineCount = itemRecord.getLineCount({ sublistId: 'member' });
+            var rev = record.load({ type: 'bomrevision', id: revisionId });
+            var lineCount = rev.getLineCount({ sublistId: 'component' });
             for (var i = 0; i < lineCount; i++) {
-                var componentItemId = itemRecord.getSublistValue({ sublistId: 'member', fieldId: 'item', line: i });
+                var componentItemId = rev.getSublistValue({ sublistId: 'component', fieldId: 'item', line: i });
                 if (componentItemId) {
                     componentIds.push(componentItemId);
                 }
             }
-            log.audit('planif_dao - getDirectComponents via sous-liste member',
-                'itemId=' + itemId + ' recordType=' + recordType + ' composants=' + componentIds.length);
+            if (lineCount && !componentIds.length) {
+                // Le champ 'item' ne renvoie rien alors qu'il y a des
+                // lignes : journalise les ids de champ réellement
+                // disponibles pour corriger sans deviner à nouveau.
+                try {
+                    log.audit('planif_dao - sous-liste "component" : champs disponibles',
+                        JSON.stringify(rev.getSublistFields({ sublistId: 'component' })));
+                } catch (e2) { /* diagnostic seulement */ }
+            }
+            log.audit('planif_dao - readComponentsFromBomRevision',
+                'revisionId=' + revisionId + ' lignes=' + lineCount + ' composants résolus=' + componentIds.length);
         } catch (e) {
-            log.error('planif_dao - getDirectComponents : lecture de la sous-liste member échouée',
-                'itemId=' + itemId + ' recordType=' + recordType + ' : ' + e.message);
+            log.error('planif_dao - readComponentsFromBomRevision failed', 'revisionId=' + revisionId + ' : ' + e.message);
+        }
+        return componentIds;
+    }
+
+    function getDirectComponents(itemId, locationId) {
+        var bomId = resolveBomId(itemId, locationId);
+        if (!bomId) {
+            log.audit('planif_dao - getDirectComponents : aucun BOM trouvé', 'itemId=' + itemId + ' locationId=' + locationId);
             return [];
         }
-
+        var revisionId = resolveActiveBomRevisionId(bomId);
+        if (!revisionId) {
+            log.audit('planif_dao - getDirectComponents : aucune révision active', 'bomId=' + bomId);
+            return [];
+        }
+        var componentIds = readComponentsFromBomRevision(revisionId);
         if (!componentIds.length) {
             return [];
         }
@@ -398,7 +455,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     }
 
     function getComponentsProposals(config, itemId, locationId, currentRunId) {
-        var components = getDirectComponents(itemId);
+        var components = getDirectComponents(itemId, locationId);
         var usePegging = config.usePegging;
         return components.map(function (comp) {
             var result = usePegging
