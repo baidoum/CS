@@ -150,14 +150,18 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     }
 
     function listItemLocationSummaries_SuiteQL(config, currentRunId) {
+        // custitem_ax_temps_vac / custitem_ax_temps_term : affichés en
+        // information pour le planificateur dans le sélecteur F1 (Temps
+        // VAC / Temps TERM), aucun rôle dans le calcul.
         var sql = 'SELECT po.item AS itemid, i.itemid AS itemcode, i.displayname AS itemname, ' +
+            'i.custitem_ax_temps_vac AS tempsvac, i.custitem_ax_temps_term AS tempsterm, ' +
             'po.location AS locationid, l.name AS locationname, ' +
             'SUM(CASE WHEN po.firmed = \'F\' THEN 1 ELSE 0 END) AS pendingcount ' +
             'FROM ' + plannedOrderTable(config) + ' po ' +
             'JOIN item i ON i.id = po.item ' +
             'JOIN location l ON l.id = po.location ' +
             'WHERE po.supplyplandefinition = ? AND po.supplyplanningrun = ? ' +
-            'GROUP BY po.item, i.itemid, i.displayname, po.location, l.name';
+            'GROUP BY po.item, i.itemid, i.displayname, i.custitem_ax_temps_vac, i.custitem_ax_temps_term, po.location, l.name';
         var rs = query.runSuiteQL({ query: sql, params: [config.supplyPlanDefinitionId, currentRunId] }).asMappedResults();
         suiteQlAvailable = true;
         return rs.map(function (row) {
@@ -165,6 +169,8 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                 itemId: row.itemid,
                 itemCode: row.itemcode,
                 itemName: row.itemname || '',
+                tempsVac: row.tempsvac,
+                tempsTerm: row.tempsterm,
                 locationId: row.locationid,
                 locationName: row.locationname || '',
                 pendingCount: parseInt(row.pendingcount, 10) || 0
@@ -173,6 +179,11 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     }
 
     function listItemLocationSummaries_Search(config, currentRunId) {
+        // Jointure 'item' reprise du join id confirmé sur ce compte pour
+        // WOTree (custscript_wo_item_join_id, valeur 'item') - pas
+        // re-vérifiée spécifiquement depuis une recherche plannedorder,
+        // mais c'est le même schéma de champ article. Si le libellé/temps
+        // reviennent vides ici, c'est le premier point à vérifier.
         var byKey = {};
         search.create({
             type: 'plannedorder',
@@ -182,6 +193,9 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             ],
             columns: [
                 search.createColumn({ name: 'item' }),
+                search.createColumn({ name: 'displayname', join: 'item' }),
+                search.createColumn({ name: 'custitem_ax_temps_vac', join: 'item' }),
+                search.createColumn({ name: 'custitem_ax_temps_term', join: 'item' }),
                 search.createColumn({ name: 'location' }),
                 search.createColumn({ name: 'firmed' })
             ]
@@ -193,7 +207,9 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                 byKey[key] = {
                     itemId: itemId,
                     itemCode: result.getText({ name: 'item' }) || '',
-                    itemName: '',
+                    itemName: result.getValue({ name: 'displayname', join: 'item' }) || '',
+                    tempsVac: result.getValue({ name: 'custitem_ax_temps_vac', join: 'item' }),
+                    tempsTerm: result.getValue({ name: 'custitem_ax_temps_term', join: 'item' }),
                     locationId: locationId,
                     locationName: result.getText({ name: 'location' }) || '',
                     pendingCount: 0

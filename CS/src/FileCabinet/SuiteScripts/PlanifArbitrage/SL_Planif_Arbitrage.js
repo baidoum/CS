@@ -169,6 +169,10 @@ define([
                 itemId: s.itemId,
                 code: s.itemCode,
                 name: s.itemName,
+                // Pour information au planificateur (F1), aucun rôle dans
+                // le calcul ni dans les règles de gestion.
+                tempsVac: s.tempsVac === null || s.tempsVac === undefined ? '' : s.tempsVac,
+                tempsTerm: s.tempsTerm === null || s.tempsTerm === undefined ? '' : s.tempsTerm,
                 locationId: s.locationId,
                 location: s.locationName,
                 kind: levelInfo.kind,
