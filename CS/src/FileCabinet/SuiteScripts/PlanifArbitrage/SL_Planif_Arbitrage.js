@@ -240,21 +240,37 @@ define([
         var components = currentRun.runId
             ? dao.getComponentsProposals(cfg, itemId, locationId, currentRun.runId)
             : [];
+        // Composants des composants (un niveau de plus, ex. niveau 3 depuis
+        // un article niveau 7) - purement informatif, même logique que F8.
+        var grandchildren = currentRun.runId
+            ? dao.getGrandchildComponentsProposals(cfg, itemId, locationId, currentRun.runId)
+            : [];
 
         return {
             currentRunId: currentRun.runId,
             orders: orders.map(serializeOrder),
-            components: components.map(function (c) {
-                var levelInfo = config.levelForCode(c.componentCode, cfg);
+            components: components.map(function (c) { return serializeComponent(c, cfg); }),
+            grandchildComponents: grandchildren.map(function (g) {
+                var levelInfo = config.levelForCode(g.parentComponentCode, cfg);
                 return {
-                    componentItemId: c.componentItemId,
-                    componentCode: c.componentCode,
-                    level: levelInfo.level,
-                    orders: c.orders.map(serializeOrder),
-                    sourceRunId: c.sourceRunId,
-                    dataSource: c.dataSource
+                    parentComponentItemId: g.parentComponentItemId,
+                    parentComponentCode: g.parentComponentCode,
+                    parentLevel: levelInfo.level,
+                    components: g.components.map(function (c) { return serializeComponent(c, cfg); })
                 };
             })
+        };
+    }
+
+    function serializeComponent(c, cfg) {
+        var levelInfo = config.levelForCode(c.componentCode, cfg);
+        return {
+            componentItemId: c.componentItemId,
+            componentCode: c.componentCode,
+            level: levelInfo.level,
+            orders: c.orders.map(serializeOrder),
+            sourceRunId: c.sourceRunId,
+            dataSource: c.dataSource
         };
     }
 

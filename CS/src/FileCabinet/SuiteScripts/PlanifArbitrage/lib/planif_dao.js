@@ -474,7 +474,10 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         return codes;
     }
 
-    function getComponentsProposals(config, itemId, locationId, currentRunId) {
+    // Composants directs de itemId, avec leurs propositions (pegging ou
+    // repli fenêtre). Factorisé pour être réutilisé un niveau plus bas
+    // (petits-composants - voir getGrandchildComponentsProposals).
+    function getComponentsProposalsFor(config, itemId, locationId, currentRunId) {
         var components = getDirectComponents(itemId, locationId);
         var usePegging = config.usePegging;
         return components.map(function (comp) {
@@ -490,6 +493,29 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                 orders: result.orders,
                 sourceRunId: currentRunId,
                 dataSource: result.dataSource
+            };
+        });
+    }
+
+    function getComponentsProposals(config, itemId, locationId, currentRunId) {
+        return getComponentsProposalsFor(config, itemId, locationId, currentRunId);
+    }
+
+    // Composants des composants directs (F8, un niveau de plus - ex. depuis
+    // un article niveau 7, les composants de ses composants niveau 5,
+    // typiquement niveau 3 dans la codification de la spec). Purement
+    // informatif, comme F8 : aucun calcul de cascade, on affiche juste les
+    // propositions déjà existantes une couche plus bas. Regroupé par
+    // composant direct parent, pas fusionné en une liste plate - un
+    // composant partagé entre plusieurs parents directs apparaît sous
+    // chacun d'eux (jamais masqué, même logique que le reste de l'outil).
+    function getGrandchildComponentsProposals(config, itemId, locationId, currentRunId) {
+        var directComponents = getDirectComponents(itemId, locationId);
+        return directComponents.map(function (comp) {
+            return {
+                parentComponentItemId: comp.componentItemId,
+                parentComponentCode: comp.componentCode,
+                components: getComponentsProposalsFor(config, comp.componentItemId, locationId, currentRunId)
             };
         });
     }
@@ -769,6 +795,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         listItemLocationSummaries: listItemLocationSummaries,
         listPlannedOrdersForItem: listPlannedOrdersForItem,
         getComponentsProposals: getComponentsProposals,
+        getGrandchildComponentsProposals: getGrandchildComponentsProposals,
         applySplit: applySplit,
         writeJournalEntry: writeJournalEntry,
         listJournalEntries: listJournalEntries,
