@@ -342,53 +342,45 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     function resolveBomId(itemId, locationId) {
         // Pas de filtre sur l'emplacement : le champ n'est pas toujours
         // renseigné sur la ligne "assembly" (BOM disponible pour tous les
-        // emplacements) - filtrer dessus exclurait à tort ces BOM. On ne
-        // filtre que par article, et on départage un éventuel doublon via
-        // masterdefault. locationId n'est donc plus utilisé ici - conservé
-        // dans la signature pour ne pas changer l'appelant, et parce qu'il
-        // reste pertinent en aval (lecture des plannedorder du composant,
-        // elle-même bien scopée par emplacement).
+        // emplacements) - filtrer dessus exclurait à tort ces BOM. locationId
+        // n'est donc plus utilisé ici - conservé dans la signature pour ne
+        // pas changer l'appelant, et parce qu'il reste pertinent en aval
+        // (lecture des plannedorder du composant, elle bien scopée par
+        // emplacement).
+        //
+        // La jointure "assembly" (nom de la sous-liste) fonctionne pour
+        // filtrer par article (constaté) ; la colonne "masterdefault" via
+        // cette même jointure, elle, est rejetée - abandonnée plutôt que
+        // de continuer à deviner son vrai nom : en pratique un seul BOM par
+        // article suffit pour cette v1, le doublon éventuel n'est que
+        // journalisé, jamais bloquant.
         var joinIds = ['assembly', 'assemblyitem'];
-        var variants = joinIds.map(function (join) {
-            return {
-                label: 'jointure "' + join + '"',
-                join: join,
-                filters: [
-                    search.createFilter({ name: 'internalid', join: join, operator: 'anyof', values: [itemId] }),
-                    search.createFilter({ name: 'isinactive', operator: 'is', values: false })
-                ]
-            };
-        });
-
-        for (var i = 0; i < variants.length; i++) {
+        for (var i = 0; i < joinIds.length; i++) {
+            var join = joinIds[i];
             try {
-                var rows = [];
+                var ids = [];
                 search.create({
                     type: 'bom',
-                    filters: variants[i].filters,
-                    columns: [
-                        search.createColumn({ name: 'internalid' }),
-                        search.createColumn({ name: 'masterdefault', join: variants[i].join })
-                    ]
+                    filters: [
+                        search.createFilter({ name: 'internalid', join: join, operator: 'anyof', values: [itemId] }),
+                        search.createFilter({ name: 'isinactive', operator: 'is', values: false })
+                    ],
+                    columns: [search.createColumn({ name: 'internalid' })]
                 }).run().each(function (result) {
-                    rows.push({
-                        id: result.getValue({ name: 'internalid' }),
-                        masterDefault: result.getValue({ name: 'masterdefault', join: variants[i].join }) === true
-                    });
+                    ids.push(result.getValue({ name: 'internalid' }));
                     return true;
                 });
-                if (rows.length) {
-                    log.audit('planif_dao - resolveBomId : variante retenue',
-                        variants[i].label + ' (' + rows.length + ' résultat(s))');
-                    var preferred = rows.filter(function (r) { return r.masterDefault; })[0];
-                    if (!preferred && rows.length > 1) {
-                        log.audit('planif_dao - resolveBomId : plusieurs BOM sans masterdefault, le premier est retenu',
-                            'itemId=' + itemId + ' ids=' + rows.map(function (r) { return r.id; }).join(','));
+                if (ids.length) {
+                    log.audit('planif_dao - resolveBomId : jointure retenue',
+                        'join="' + join + '" itemId=' + itemId + ' bomIds=' + ids.join(','));
+                    if (ids.length > 1) {
+                        log.audit('planif_dao - resolveBomId : plusieurs BOM trouvés, le premier est retenu',
+                            'itemId=' + itemId + ' ids=' + ids.join(','));
                     }
-                    return preferred ? preferred.id : rows[0].id;
+                    return ids[0];
                 }
             } catch (e) {
-                log.error('planif_dao - resolveBomId : variante échouée', variants[i].label + ' : ' + e.message);
+                log.error('planif_dao - resolveBomId : jointure échouée', 'join="' + join + '" : ' + e.message);
             }
         }
         return null;
