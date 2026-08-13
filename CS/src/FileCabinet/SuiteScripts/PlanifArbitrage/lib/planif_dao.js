@@ -357,7 +357,13 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         try {
             search.create({
                 type: 'bom',
-                filters: [['isinactive', 'is', 'F'], ['assemblyitem.assembly', 'anyof', itemId]],
+                // isinactive retiré : combiné au filtre ci-dessous, il
+                // provoquait à lui seul "Malformed search filter
+                // expression" alors que le filtre unique (confirmé via le
+                // générateur NetSuite) fonctionne seul. Les BOM inactifs ne
+                // sont pas exclus pour l'instant - à revisiter si ça pose
+                // problème en pratique.
+                filters: [['assemblyitem.assembly', 'anyof', itemId]],
                 columns: [search.createColumn({ name: 'internalid' })]
             }).run().each(function (result) {
                 ids.push(result.getValue({ name: 'internalid' }));
@@ -389,7 +395,9 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             // "billofmaterials.internalidnumber" avec l'opérateur equalto.
             search.create({
                 type: 'bomrevision',
-                filters: [['billofmaterials.internalidnumber', 'equalto', bomId], ['isinactive', 'is', 'F']],
+                // isinactive retiré par prudence (voir resolveBomId) - le
+                // script confirmé par l'utilisateur ne l'avait pas non plus.
+                filters: [['billofmaterials.internalidnumber', 'equalto', bomId]],
                 columns: [
                     search.createColumn({ name: 'internalid' }),
                     search.createColumn({ name: 'effectivestartdate', sort: search.Sort.DESC })
