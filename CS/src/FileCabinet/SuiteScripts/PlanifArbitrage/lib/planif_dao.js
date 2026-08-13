@@ -318,43 +318,83 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // section 10) - dataSource is always returned so the UI never silently
     // presents an approximation as certain.
 
-    function getDirectComponents(itemId) {
-        var components = [];
+    // Premier essai (bom/bomrevision/bomrevisioncomponent en recherche
+    // séparée) invalide sur ce compte - repli sur la nomenclature portée
+    // directement par l'article : sous-liste "Components" (id interne
+    // 'member') du record article lui-même. C'est le mécanisme standard et
+    // le plus fiable, que la fonctionnalité Bill of Materials dédiée soit
+    // utilisée ou non - NetSuite alimente/reflète cette sous-liste dans les
+    // deux cas.
+
+    // Le "type" générique d'un article (recherche) ne correspond pas
+    // directement au type de record chargeable (record.load) - un article
+    // Assembly confirmé sur un plannedorder réel (dump section 9, itemtype
+    // "Assembly") donne 'assemblyitem' ; les variantes numéro de lot/série
+    // sont ajoutées par prudence, jamais rencontrées mais plausibles en
+    // agroalimentaire (traçabilité).
+    var ITEM_TYPE_TO_RECORD_TYPE = {
+        'Assembly': 'assemblyitem',
+        'LotNumberedAssembly': 'lotnumberedassemblyitem',
+        'SerializedAssembly': 'serializedassemblyitem',
+        'Kit': 'kititem'
+    };
+
+    function resolveLoadableItemType(itemId) {
         try {
-            search.create({
-                type: 'bom',
-                filters: [['item', 'anyof', itemId]],
-                columns: ['internalid']
-            }).run().each(function (result) {
-                var bomId = result.getValue({ name: 'internalid' });
-                search.create({
-                    type: 'bomrevision',
-                    filters: [['bom', 'anyof', bomId], ['isinactive', 'is', 'F']],
-                    columns: ['internalid']
-                }).run().each(function (rev) {
-                    var revId = rev.getValue({ name: 'internalid' });
-                    search.create({
-                        type: 'bomrevisioncomponent',
-                        filters: [['bomrevision', 'anyof', revId]],
-                        columns: ['item']
-                    }).run().each(function (comp) {
-                        var componentItemId = comp.getValue({ name: 'item' });
-                        if (componentItemId) {
-                            components.push({
-                                componentItemId: componentItemId,
-                                componentCode: comp.getText({ name: 'item' }) || ''
-                            });
-                        }
-                        return true;
-                    });
-                    return true;
-                });
-                return true;
-            });
+            var result = search.lookupFields({ type: search.Type.ITEM, id: itemId, columns: ['type'] });
+            var typeValue = result.type && result.type[0] && result.type[0].value;
+            return ITEM_TYPE_TO_RECORD_TYPE[typeValue] || null;
         } catch (e) {
-            log.error('planif_dao - getDirectComponents failed (BOM record names unconfirmed)', e.message);
+            log.error('planif_dao - resolveLoadableItemType failed', 'itemId=' + itemId + ' : ' + e.message);
+            return null;
         }
-        return components;
+    }
+
+    function getDirectComponents(itemId) {
+        var recordType = resolveLoadableItemType(itemId);
+        if (!recordType) {
+            log.audit('planif_dao - getDirectComponents : type d’article non reconnu comme fabriqué', 'itemId=' + itemId);
+            return [];
+        }
+
+        var componentIds = [];
+        try {
+            var itemRecord = record.load({ type: recordType, id: itemId });
+            var lineCount = itemRecord.getLineCount({ sublistId: 'member' });
+            for (var i = 0; i < lineCount; i++) {
+                var componentItemId = itemRecord.getSublistValue({ sublistId: 'member', fieldId: 'item', line: i });
+                if (componentItemId) {
+                    componentIds.push(componentItemId);
+                }
+            }
+            log.audit('planif_dao - getDirectComponents via sous-liste member',
+                'itemId=' + itemId + ' recordType=' + recordType + ' composants=' + componentIds.length);
+        } catch (e) {
+            log.error('planif_dao - getDirectComponents : lecture de la sous-liste member échouée',
+                'itemId=' + itemId + ' recordType=' + recordType + ' : ' + e.message);
+            return [];
+        }
+
+        if (!componentIds.length) {
+            return [];
+        }
+        var codesById = resolveItemCodes(componentIds);
+        return componentIds.map(function (id) {
+            return { componentItemId: id, componentCode: codesById[id] || '' };
+        });
+    }
+
+    function resolveItemCodes(itemIds) {
+        var codes = {};
+        search.create({
+            type: search.Type.ITEM,
+            filters: [['internalid', 'anyof', itemIds]],
+            columns: ['itemid']
+        }).run().each(function (result) {
+            codes[result.id] = result.getValue({ name: 'itemid' }) || '';
+            return true;
+        });
+        return codes;
     }
 
     function getComponentsProposals(config, itemId, locationId, currentRunId) {
