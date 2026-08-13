@@ -348,42 +348,33 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         // (lecture des plannedorder du composant, elle bien scopée par
         // emplacement).
         //
-        // La jointure "assembly" (nom de la sous-liste) fonctionne pour
-        // filtrer par article (constaté) ; la colonne "masterdefault" via
-        // cette même jointure, elle, est rejetée - abandonnée plutôt que
-        // de continuer à deviner son vrai nom : en pratique un seul BOM par
-        // article suffit pour cette v1, le doublon éventuel n'est que
-        // journalisé, jamais bloquant.
-        var joinIds = ['assembly', 'assemblyitem'];
-        for (var i = 0; i < joinIds.length; i++) {
-            var join = joinIds[i];
-            try {
-                var ids = [];
-                search.create({
-                    type: 'bom',
-                    filters: [
-                        search.createFilter({ name: 'internalid', join: join, operator: 'anyof', values: [itemId] }),
-                        search.createFilter({ name: 'isinactive', operator: 'is', values: false })
-                    ],
-                    columns: [search.createColumn({ name: 'internalid' })]
-                }).run().each(function (result) {
-                    ids.push(result.getValue({ name: 'internalid' }));
-                    return true;
-                });
-                if (ids.length) {
-                    log.audit('planif_dao - resolveBomId : jointure retenue',
-                        'join="' + join + '" itemId=' + itemId + ' bomIds=' + ids.join(','));
-                    if (ids.length > 1) {
-                        log.audit('planif_dao - resolveBomId : plusieurs BOM trouvés, le premier est retenu',
-                            'itemId=' + itemId + ' ids=' + ids.join(','));
-                    }
-                    return ids[0];
-                }
-            } catch (e) {
-                log.error('planif_dao - resolveBomId : jointure échouée', 'join="' + join + '" : ' + e.message);
-            }
+        // Confirmé via le générateur de recherche NetSuite (UI) : le champ
+        // se filtre en notation "join.champ" dans le filtre plat -
+        // "assemblyitem.assembly" - ni "assembly" seul, ni une jointure
+        // explicite {name:'internalid', join:'assemblyitem'} ne
+        // fonctionnaient ; c'est la chaîne composée qu'il fallait.
+        var ids = [];
+        try {
+            search.create({
+                type: 'bom',
+                filters: [['isinactive', 'is', 'F'], ['assemblyitem.assembly', 'anyof', itemId]],
+                columns: [search.createColumn({ name: 'internalid' })]
+            }).run().each(function (result) {
+                ids.push(result.getValue({ name: 'internalid' }));
+                return true;
+            });
+        } catch (e) {
+            log.error('planif_dao - resolveBomId failed', 'itemId=' + itemId + ' : ' + e.message);
+            return null;
         }
-        return null;
+        if (!ids.length) {
+            return null;
+        }
+        if (ids.length > 1) {
+            log.audit('planif_dao - resolveBomId : plusieurs BOM trouvés, le premier est retenu',
+                'itemId=' + itemId + ' ids=' + ids.join(','));
+        }
+        return ids[0];
     }
 
     // Révision active la plus récente (par date d'effet) pour ce BOM - la
@@ -392,9 +383,13 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     function resolveActiveBomRevisionId(bomId) {
         var revisionId = null;
         try {
+            // Confirmé via le générateur de recherche NetSuite (UI) : comme
+            // pour resolveBomId, un filtre plat sur le champ lui-même
+            // ('billofmaterials') ne suffit pas - il faut la forme
+            // "billofmaterials.internalidnumber" avec l'opérateur equalto.
             search.create({
                 type: 'bomrevision',
-                filters: [['billofmaterials', 'anyof', bomId], ['isinactive', 'is', 'F']],
+                filters: [['billofmaterials.internalidnumber', 'equalto', bomId], ['isinactive', 'is', 'F']],
                 columns: [
                     search.createColumn({ name: 'internalid' }),
                     search.createColumn({ name: 'effectivestartdate', sort: search.Sort.DESC })
