@@ -385,10 +385,19 @@ define([
         try {
             require(['N/action'], function (action) {
                 var actions = action.find({ recordType: 'supplyplandefinition' });
-                var relaunch = actions.filter(function (a) { return /launch|relaunch|run/i.test(a.id); })[0];
+                // Journalise TOUTES les actions exposées - si la regex
+                // ci-dessous ne trouve pas la bonne, on la voit quand même
+                // ici au lieu de deviner à nouveau à l'aveugle.
+                log.audit('Planif Arbitrage - actions disponibles sur supplyplandefinition',
+                    JSON.stringify(actions.map(function (a) { return { id: a.id, label: a.label }; })));
+
+                var relaunch = actions.filter(function (a) { return /launch|relaunch|run|recalc/i.test(a.id + ' ' + (a.label || '')); })[0];
                 if (relaunch) {
+                    log.audit('Planif Arbitrage - action retenue pour le lancement', relaunch.id + ' (' + (relaunch.label || '') + ')');
                     var result = relaunch.execute({ id: cfg.supplyPlanDefinitionId });
                     launched = { launched: true, runTriggerId: result && result.id ? result.id : null };
+                } else {
+                    log.audit('Planif Arbitrage - aucune action de lancement reconnue parmi celles disponibles', 'itemId=' + cfg.supplyPlanDefinitionId);
                 }
             });
         } catch (e) {
