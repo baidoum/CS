@@ -717,7 +717,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         try {
             var filters = [];
             if (currentRunId) {
-                filters.push(search.createFilter({ name: 'custrecord_planif_journal_run', operator: search.Operator.IS, values: [currentRunId] }));
+                filters.push(search.createFilter({ name: 'custrecord_planif_journal_run', operator: search.Operator.IS, values: [String(currentRunId)] }));
             }
             var count = 0;
             search.create({
@@ -728,6 +728,22 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                 count++;
                 return true;
             });
+            if (count === 0) {
+                // Diagnostic : quelles valeurs de run existent réellement
+                // dans le journal, pour comparer à currentRunId recherché
+                // sans avoir à deviner un éventuel problème de type/format.
+                var storedRunValues = [];
+                search.create({
+                    type: 'customrecord_planif_journal',
+                    filters: [],
+                    columns: [search.createColumn({ name: 'custrecord_planif_journal_run', summary: search.Summary.GROUP })]
+                }).run().each(function (r) {
+                    storedRunValues.push(r.getValue({ name: 'custrecord_planif_journal_run', summary: search.Summary.GROUP }));
+                    return true;
+                });
+                log.audit('planif_dao - countArbitratedItemsSinceRun : 0 résultat, comparaison diagnostique',
+                    'recherché="' + currentRunId + '" (type=' + (typeof currentRunId) + ') stockés dans le journal=' + JSON.stringify(storedRunValues));
+            }
             return count;
         } catch (e) {
             log.error('planif_dao - countArbitratedItemsSinceRun failed', e.message);
@@ -747,9 +763,12 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             rec.setValue({ fieldId: 'custrecord_planif_journal_created', value: JSON.stringify(entry.createdOrderIds || []) });
             rec.setValue({ fieldId: 'custrecord_planif_journal_gap', value: entry.quantityGap || 0 });
             rec.setValue({ fieldId: 'custrecord_planif_journal_run', value: entry.runId || '' });
-            return rec.save();
+            var id = rec.save();
+            log.audit('planif_dao - writeJournalEntry OK',
+                'id=' + id + ' runId=' + JSON.stringify(entry.runId) + ' (type=' + (typeof entry.runId) + ') itemId=' + entry.itemId);
+            return id;
         } catch (e) {
-            log.error('planif_dao - writeJournalEntry failed', e.message);
+            log.error('planif_dao - writeJournalEntry failed', 'runId=' + JSON.stringify(entry.runId) + ' : ' + e.message);
             return null;
         }
     }
