@@ -37,6 +37,19 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         return config.plannedOrderTable || 'plannedorder';
     }
 
+    // supplyplanningrun lu via record.load sur plannedorder revient sous
+    // forme de nombre décimal ("1128.0") plutôt qu'entier propre ("1128") -
+    // constaté sur sandbox (F4 comparait "1128" à "1128.0" et ne matchait
+    // jamais). Normalisé à chaque point d'écriture/lecture d'un run id pour
+    // que la comparaison reste fiable quelle que soit la source.
+    function normalizeRunId(value) {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+        var n = parseInt(value, 10);
+        return isNaN(n) ? String(value) : String(n);
+    }
+
     // ---- sélection du plan d'approvisionnement -------------------------
     //
     // Un compte peut porter plusieurs Supply Plan Definition (spec limitée
@@ -105,7 +118,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         if (!rs.length || rs[0].runid === null || rs[0].runid === undefined) {
             return { runId: null };
         }
-        return { runId: String(rs[0].runid) };
+        return { runId: normalizeRunId(rs[0].runid) };
     }
 
     function resolveCurrentRun_Search(config) {
@@ -133,7 +146,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             return { runId: null };
         }
         var maxRunId = runIds.reduce(function (a, b) { return parseInt(b, 10) > parseInt(a, 10) ? b : a; });
-        return { runId: maxRunId };
+        return { runId: normalizeRunId(maxRunId) };
     }
 
     // ---- F1 : listItems support -----------------------------------------
@@ -717,7 +730,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         try {
             var filters = [];
             if (currentRunId) {
-                filters.push(search.createFilter({ name: 'custrecord_planif_journal_run', operator: search.Operator.IS, values: [String(currentRunId)] }));
+                filters.push(search.createFilter({ name: 'custrecord_planif_journal_run', operator: search.Operator.IS, values: [normalizeRunId(currentRunId)] }));
             }
             var count = 0;
             search.create({
@@ -762,7 +775,7 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             rec.setValue({ fieldId: 'custrecord_planif_journal_origin', value: entry.originalOrderId || '' });
             rec.setValue({ fieldId: 'custrecord_planif_journal_created', value: JSON.stringify(entry.createdOrderIds || []) });
             rec.setValue({ fieldId: 'custrecord_planif_journal_gap', value: entry.quantityGap || 0 });
-            rec.setValue({ fieldId: 'custrecord_planif_journal_run', value: entry.runId || '' });
+            rec.setValue({ fieldId: 'custrecord_planif_journal_run', value: normalizeRunId(entry.runId) });
             var id = rec.save();
             log.audit('planif_dao - writeJournalEntry OK',
                 'id=' + id + ' runId=' + JSON.stringify(entry.runId) + ' (type=' + (typeof entry.runId) + ') itemId=' + entry.itemId);
