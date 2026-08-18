@@ -173,7 +173,12 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             'FROM ' + plannedOrderTable(config) + ' po ' +
             'JOIN item i ON i.id = po.item ' +
             'JOIN location l ON l.id = po.location ' +
-            'WHERE po.supplyplandefinition = ? AND po.supplyplanningrun = ? ' +
+            // Les ordres de transfert (TrnfrOrd) sont hors périmètre : ce ne
+            // sont pas des propositions de fabrication, ils n'ont pas de
+            // sens dans le modèle de niveaux de cet écran (ni "fabriqué",
+            // ni "acheté"). Les ordres d'achat (PurchOrd), eux, restent
+            // visibles pour les articles de niveau achat.
+            'WHERE po.supplyplandefinition = ? AND po.supplyplanningrun = ? AND po.transactiontype != \'TrnfrOrd\' ' +
             'GROUP BY po.item, i.itemid, i.displayname, i.custitem_ax_temps_vac, i.custitem_ax_temps_term, po.location, l.name';
         var rs = query.runSuiteQL({ query: sql, params: [config.supplyPlanDefinitionId, currentRunId] }).asMappedResults();
         suiteQlAvailable = true;
@@ -210,9 +215,15 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
                 search.createColumn({ name: 'custitem_ax_temps_vac', join: 'item' }),
                 search.createColumn({ name: 'custitem_ax_temps_term', join: 'item' }),
                 search.createColumn({ name: 'location' }),
-                search.createColumn({ name: 'firmed' })
+                search.createColumn({ name: 'firmed' }),
+                search.createColumn({ name: 'transactiontype' })
             ]
         }).run().each(function (result) {
+            // Ordres de transfert exclus - voir le commentaire équivalent
+            // dans la variante SuiteQL ci-dessus.
+            if (result.getValue({ name: 'transactiontype' }) === 'TrnfrOrd') {
+                return true;
+            }
             var itemId = result.getValue({ name: 'item' });
             var locationId = result.getValue({ name: 'location' });
             var key = itemId + '|' + locationId;
@@ -239,12 +250,18 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
     // ---- F2/F8 : listOrders support --------------------------------------
 
     function listPlannedOrdersForItem(config, itemId, locationId, currentRunId) {
+        var orders;
         try {
-            return listPlannedOrdersForItem_SuiteQL(config, itemId, locationId, currentRunId);
+            orders = listPlannedOrdersForItem_SuiteQL(config, itemId, locationId, currentRunId);
         } catch (e) {
             log.error('planif_dao - listPlannedOrdersForItem SuiteQL failed, falling back to N/search', e.message);
-            return listPlannedOrdersForItem_Search(config, itemId, locationId, currentRunId);
+            orders = listPlannedOrdersForItem_Search(config, itemId, locationId, currentRunId);
         }
+        // Ordres de transfert exclus (hors périmètre de l'écran, voir
+        // listItemLocationSummaries) - filtré ici une seule fois, quelle
+        // que soit la source (SuiteQL ou repli), les deux mappent déjà
+        // transactiontype dans l'objet retourné.
+        return orders.filter(function (o) { return o.transactiontype !== 'TrnfrOrd'; });
     }
 
     function orderColumns() {
