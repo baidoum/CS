@@ -74,9 +74,6 @@ define(['N/runtime'], function (runtime) {
             // Active la tentative de lecture des composants via le pegging
             // (F8) avant repli sur le filtrage fenêtre/article/emplacement.
             usePegging: getParam('custscript_planif_use_pegging', 'T') === 'T',
-            // URL de repli pour F6 si le lancement par N/action est
-            // indisponible (redirection vers l'écran standard SPD).
-            supplyPlanUrl: getParam('custscript_planif_supply_plan_url', ''),
             // Nombre d'articles par groupe de niveau affichés dans le
             // sélecteur F1 avant défilement.
             pageSize: parseInt(getParam('custscript_planif_page_size', '200'), 10)

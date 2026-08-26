@@ -48,11 +48,6 @@
       <defaultvalue>T</defaultvalue>
       <description>Active la tentative de lecture des composants (F8) via le pegging du MRP avant repli sur le filtrage fenêtre/article/emplacement (section 10).</description>
     </scriptcustomfield>
-    <scriptcustomfield scriptid="custscript_planif_supply_plan_url">
-      <fieldtype>TEXT</fieldtype>
-      <label>Planif: URL de repli Supply Plan Definition</label>
-      <description>URL de l'écran standard de la Supply Plan Definition, utilisée en repli pour F6 si le lancement par N/action est indisponible. À renseigner après confirmation sur le compte.</description>
-    </scriptcustomfield>
     <scriptcustomfield scriptid="custscript_planif_page_size">
       <fieldtype>INTEGER</fieldtype>
       <label>Planif: Articles par groupe de niveau</label>

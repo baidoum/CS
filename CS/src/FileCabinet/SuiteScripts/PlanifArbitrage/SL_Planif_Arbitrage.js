@@ -102,9 +102,6 @@ define([
         if (action === 'applySplit') {
             return writeJson(context, actionApplySplit(payload));
         }
-        if (action === 'launch') {
-            return writeJson(context, actionLaunch(payload));
-        }
         if (action === 'listJournal') {
             return writeJson(context, actionListJournal(payload));
         }
@@ -363,49 +360,9 @@ define([
         return result;
     }
 
-    // ---- action: launch (F6) ---------------------------------------------
-    //
-    // Libellé retenu par la spec : « Relancer le calcul » - le
-    // planificateur demande un recalcul, il ne lance pas un moteur.
-    // Piste principale N/action (à confirmer sur le compte, section 10/B.7)
-    // ; à défaut, redirection vers l'écran standard de la Supply Plan
-    // Definition.
-
-    function actionLaunch(payload) {
-        var cfg = resolveConfigForRequest(payload);
-        var launched = null;
-
-        // Chargement synchrone à la demande - N/action n'est utilisé que
-        // pour cette action et son existence même n'est pas garantie sur ce
-        // compte (spec section 10/B.7) ; l'inclure dans le define() du
-        // haut du fichier ferait échouer TOUT le Suitelet si le module
-        // n'existait pas. require() imbriqué côté serveur s'exécute de
-        // façon synchrone (contrairement à un AMD navigateur), donc ce
-        // callback a bien terminé avant le `return` ci-dessous.
-        try {
-            require(['N/action'], function (action) {
-                var actions = action.find({ recordType: 'supplyplandefinition' });
-                // Journalise TOUTES les actions exposées - si la regex
-                // ci-dessous ne trouve pas la bonne, on la voit quand même
-                // ici au lieu de deviner à nouveau à l'aveugle.
-                log.audit('Planif Arbitrage - actions disponibles sur supplyplandefinition',
-                    JSON.stringify(actions.map(function (a) { return { id: a.id, label: a.label }; })));
-
-                var relaunch = actions.filter(function (a) { return /launch|relaunch|run|recalc/i.test(a.id + ' ' + (a.label || '')); })[0];
-                if (relaunch) {
-                    log.audit('Planif Arbitrage - action retenue pour le lancement', relaunch.id + ' (' + (relaunch.label || '') + ')');
-                    var result = relaunch.execute({ id: cfg.supplyPlanDefinitionId });
-                    launched = { launched: true, runTriggerId: result && result.id ? result.id : null };
-                } else {
-                    log.audit('Planif Arbitrage - aucune action de lancement reconnue parmi celles disponibles', 'itemId=' + cfg.supplyPlanDefinitionId);
-                }
-            });
-        } catch (e) {
-            log.audit('Planif Arbitrage - N/action indisponible pour supplyplandefinition, repli sur redirection', e.message);
-        }
-
-        return launched || { launched: false, redirectUrl: cfg.supplyPlanUrl || '' };
-    }
+    // F6 (relance du calcul) retiré : le recalcul MRP est déclenché
+    // manuellement par le planificateur en dehors de cet écran, pas de
+    // bouton ni d'action serveur pour ça.
 
     // ---- action: listJournal (F9) ------------------------------------
 
