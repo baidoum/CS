@@ -159,6 +159,12 @@ define([
         var byLevel = {};
         summaries.forEach(function (s) {
             var levelInfo = config.levelForCode(s.itemCode, cfg);
+            // Décision explicite : le sélecteur F1 n'affiche que les
+            // produits finis (préfixe 7) - niveaux 5/3 non accessibles
+            // depuis cet écran pour l'instant.
+            if (levelInfo.level !== '7') {
+                return;
+            }
             if (!byLevel[levelInfo.level]) {
                 byLevel[levelInfo.level] = { level: levelInfo.level, label: levelInfo.label, items: [] };
             }
@@ -327,12 +333,24 @@ define([
         var locationId = payload.locationId;
         var lines = (payload.lines || [])
             .map(function (l) {
-                return { quantity: parseFloat(l.quantity) || 0, startDate: parseIsoDateLocal(l.dateIso) };
+                // "Lancer" (case à cocher par ligne) pilote released sur la
+                // commande planifiée créée - firmed reste toujours vrai
+                // (section 9), released est désormais au choix du
+                // planificateur ligne par ligne, plus systématique.
+                return { quantity: parseFloat(l.quantity) || 0, startDate: parseIsoDateLocal(l.dateIso), release: l.release === true };
             })
             .filter(function (l) { return l.quantity > 0 && l.startDate; });
 
         if (!originalOrderId || !itemId || !locationId || !lines.length) {
             return { error: 'Paramètres invalides pour le fractionnement.' };
+        }
+
+        // Exception explicite au principe "aucun blocage" de F3 (demande
+        // utilisateur, pas une règle de la spec d'origine) : une quantité
+        // planifiée un dimanche est refusée. Revalidé ici même si le
+        // client désactive déjà le bouton - jamais la seule barrière.
+        if (lines.some(function (l) { return l.startDate.getDay() === 0; })) {
+            return { error: 'Au moins une ligne planifie une quantité un dimanche - validation refusée.' };
         }
 
         var result = dao.applySplit(cfg, originalOrderId, lines);

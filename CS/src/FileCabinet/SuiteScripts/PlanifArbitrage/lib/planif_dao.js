@@ -715,11 +715,10 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         rec.setValue({ fieldId: 'quantity', value: line.quantity });
         rec.setValue({ fieldId: 'startdate', value: line.startDate });
         rec.setValue({ fieldId: 'enddate', value: line.startDate });
-        // À la validation d'un fractionnement, la ligne est à la fois
-        // firmée (déjà géré via defaultValues, initializePlannedOrder) et
-        // relâchée - décision explicite de l'utilisateur (le recalcul MRP
-        // n'est plus déclenché depuis cet écran, F6 retiré).
-        rec.setValue({ fieldId: 'released', value: true });
+        // "Lancer" (case à cocher par ligne, F3) pilote released - toujours
+        // firmée (defaultValues, initializePlannedOrder), released devient
+        // un choix par ligne du planificateur plutôt que systématique.
+        rec.setValue({ fieldId: 'released', value: line.release === true });
         return rec.save();
     }
 
