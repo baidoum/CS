@@ -471,7 +471,7 @@ define([], function () {
 '      var badge = document.createElement("span");',
 '      badge.className = "pa-badge pa-badge-" + (it.badge === "other" ? "buy" : it.badge);',
 '      badge.textContent = it.badge === "buy" ? "Achat" : it.badge === "other" ? "Non classé"',
-'        : (it.badge === "todo" ? (it.pendingCount + " à arbitrer") : "Firmé");',
+'        : (it.badge === "todo" ? (it.pendingCount + " à arbitrer") : "Planificateur");',
 '      li.appendChild(code); li.appendChild(nm); li.appendChild(badge);',
 '      list.appendChild(li);',
 '    });',
