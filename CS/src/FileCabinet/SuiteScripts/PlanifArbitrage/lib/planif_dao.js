@@ -895,6 +895,9 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
             });
             return rows.length < MAX_RESULTS_PER_SEARCH;
         });
+        log.audit('planif_dao - listRealWorkOrders_Search',
+            'itemId=' + itemId + ' locationId=' + locationId + ' status=' + config.woStatusReleased +
+            ' withFirmedFilter=' + withFirmedFilter + ' résultats=' + rows.length);
         return rows;
     }
 
