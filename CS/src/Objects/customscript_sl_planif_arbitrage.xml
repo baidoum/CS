@@ -54,5 +54,11 @@
       <defaultvalue>200</defaultvalue>
       <description>Nombre d'articles affichés par groupe de niveau dans le sélecteur F1 avant défilement.</description>
     </scriptcustomfield>
+    <scriptcustomfield scriptid="custscript_planif_wo_status_released">
+      <fieldtype>TEXT</fieldtype>
+      <label>Planif: Statut "Released" des OF réels</label>
+      <defaultvalue>WorkOrd:B</defaultvalue>
+      <description>Valeur interne du statut "Released" sur workorder, utilisée pour n'afficher (en lecture seule) que les OF réels déjà lancés. Reprise de WOTree (custscript_wo_status_released), déjà confirmée sur ce compte.</description>
+    </scriptcustomfield>
   </scriptcustomfields>
 </suiteletscript>

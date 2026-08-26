@@ -248,10 +248,23 @@ define([
         var grandchildren = currentRun.runId
             ? dao.getGrandchildComponentsProposals(cfg, itemId, locationId, currentRun.runId)
             : [];
+        // OF réels déjà créés dans NetSuite (workorder, distinct de
+        // plannedorder) - demande utilisateur, vue seule, jamais rattaché
+        // au run du plan (ce sont des transactions indépendantes).
+        var realWorkOrders = dao.listRealWorkOrders(cfg, itemId, locationId);
 
         return {
             currentRunId: currentRun.runId,
             orders: orders.map(serializeOrder),
+            realWorkOrders: realWorkOrders.map(function (wo) {
+                return {
+                    id: wo.id,
+                    tranId: wo.tranId,
+                    quantity: wo.quantity,
+                    startDateIso: toIsoDate(wo.startDateIso),
+                    endDateIso: toIsoDate(wo.endDateIso)
+                };
+            }),
             components: components.map(function (c) { return serializeComponent(c, cfg); }),
             grandchildComponents: grandchildren.map(function (g) {
                 var levelInfo = config.levelForCode(g.parentComponentCode, cfg);

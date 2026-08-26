@@ -842,8 +842,65 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         return rows;
     }
 
+    // ---- OF réels (vue seule) ---------------------------------------------
+    //
+    // Demande utilisateur : afficher, à côté des propositions (plannedorder),
+    // les ordres de fabrication RÉELS déjà créés dans NetSuite pour
+    // l'article/emplacement sélectionné - en lecture seule, jamais
+    // arbitrables. Record type 'workorder', distinct de 'plannedorder'.
+    // Statut "Released" repris de WOTree (custscript_wo_status_released,
+    // même compte) : valeur interne 'WorkOrd:B' déjà confirmée fonctionner
+    // en filtre de recherche sur ce record type.
+    //
+    // "firmed" sur workorder n'est pas confirmé (pourrait ne pas exister,
+    // à la différence de plannedorder) - tenté en premier, repli sur le
+    // statut seul si la recherche échoue avec ce filtre.
+
+    function listRealWorkOrders(config, itemId, locationId) {
+        try {
+            return listRealWorkOrders_Search(config, itemId, locationId, true);
+        } catch (e) {
+            log.error('planif_dao - listRealWorkOrders : filtre firmed indisponible sur workorder, repli sans lui', e.message);
+            try {
+                return listRealWorkOrders_Search(config, itemId, locationId, false);
+            } catch (e2) {
+                log.error('planif_dao - listRealWorkOrders failed', e2.message);
+                return [];
+            }
+        }
+    }
+
+    function listRealWorkOrders_Search(config, itemId, locationId, withFirmedFilter) {
+        var rows = [];
+        var filters = [
+            search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }),
+            search.createFilter({ name: 'item', operator: search.Operator.ANYOF, values: [itemId] }),
+            search.createFilter({ name: 'location', operator: search.Operator.ANYOF, values: [locationId] }),
+            search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.woStatusReleased] })
+        ];
+        if (withFirmedFilter) {
+            filters.push(search.createFilter({ name: 'firmed', operator: search.Operator.IS, values: true }));
+        }
+        search.create({
+            type: 'workorder',
+            filters: filters,
+            columns: ['internalid', 'tranid', 'quantity', 'startdate', 'enddate']
+        }).run().each(function (result) {
+            rows.push({
+                id: result.getValue({ name: 'internalid' }),
+                tranId: result.getValue({ name: 'tranid' }) || '',
+                quantity: parseFloat(result.getValue({ name: 'quantity' })) || 0,
+                startDateIso: result.getValue({ name: 'startdate' }),
+                endDateIso: result.getValue({ name: 'enddate' })
+            });
+            return rows.length < MAX_RESULTS_PER_SEARCH;
+        });
+        return rows;
+    }
+
     return {
         listSupplyPlanDefinitions: listSupplyPlanDefinitions,
+        listRealWorkOrders: listRealWorkOrders,
         resolveCurrentRun: resolveCurrentRun,
         listItemLocationSummaries: listItemLocationSummaries,
         listPlannedOrdersForItem: listPlannedOrdersForItem,

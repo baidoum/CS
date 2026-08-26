@@ -76,7 +76,11 @@ define(['N/runtime'], function (runtime) {
             usePegging: getParam('custscript_planif_use_pegging', 'T') === 'T',
             // Nombre d'articles par groupe de niveau affichés dans le
             // sélecteur F1 avant défilement.
-            pageSize: parseInt(getParam('custscript_planif_page_size', '200'), 10)
+            pageSize: parseInt(getParam('custscript_planif_page_size', '200'), 10),
+            // Valeur interne du statut "Released" sur workorder - reprise
+            // de WOTree (custscript_wo_status_released), déjà confirmée sur
+            // ce compte comme filtre de recherche valide.
+            woStatusReleased: getParam('custscript_planif_wo_status_released', 'WorkOrd:B')
         };
     }
 
