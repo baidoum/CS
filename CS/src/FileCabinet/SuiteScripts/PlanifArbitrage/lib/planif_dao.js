@@ -872,10 +872,13 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
 
     function listRealWorkOrders_Search(config, itemId, locationId, withFirmedFilter) {
         var rows = [];
+        // Pas de filtre par emplacement (décision utilisateur) : la
+        // fabrication peut se faire sur un site différent de celui de la
+        // commande client / de la commande planifiée. On montre tous les OF
+        // réels de l'article, quel que soit leur emplacement.
         var filters = [
             search.createFilter({ name: 'mainline', operator: search.Operator.IS, values: true }),
             search.createFilter({ name: 'item', operator: search.Operator.ANYOF, values: [itemId] }),
-            search.createFilter({ name: 'location', operator: search.Operator.ANYOF, values: [locationId] }),
             search.createFilter({ name: 'status', operator: search.Operator.ANYOF, values: [config.woStatusReleased] })
         ];
         if (withFirmedFilter) {
