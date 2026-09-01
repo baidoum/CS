@@ -262,7 +262,8 @@ define([
                     tranId: wo.tranId,
                     quantity: wo.quantity,
                     startDateIso: toIsoDate(wo.startDateIso),
-                    endDateIso: toIsoDate(wo.endDateIso)
+                    endDateIso: toIsoDate(wo.endDateIso),
+                    statusLabel: wo.statusText
                 };
             }),
             components: components.map(function (c) { return serializeComponent(c, cfg); }),
@@ -297,8 +298,13 @@ define([
             startDateIso: toIsoDate(o.startDateIso),
             endDateIso: toIsoDate(o.endDateIso),
             firmed: !!o.firmed,
+            released: !!o.released,
             // Section A.1 : l'origine encode QUI a décidé, pas la gravité.
             originLabel: o.firmed ? 'human' : 'engine',
+            // Statut dérivé de firmed/released (demande utilisateur) :
+            // ni l'un ni l'autre -> proposition ; firmed seul -> ferme ;
+            // firmed + released -> lancé.
+            statusLabel: !o.firmed ? 'Proposition' : (o.released ? 'Lancé' : 'Ferme'),
             itemlocation: o.itemlocation,
             planningitemlocation: o.planningitemlocation,
             planningengineitemlocation: o.planningengineitemlocation,

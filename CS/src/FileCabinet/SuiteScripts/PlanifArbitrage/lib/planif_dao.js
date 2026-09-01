@@ -887,14 +887,18 @@ define(['N/query', 'N/search', 'N/record', 'N/log'], function (query, search, re
         search.create({
             type: 'workorder',
             filters: filters,
-            columns: ['internalid', 'tranid', 'quantity', 'startdate', 'enddate']
+            columns: ['internalid', 'tranid', 'quantity', 'startdate', 'enddate', 'status']
         }).run().each(function (result) {
             rows.push({
                 id: result.getValue({ name: 'internalid' }),
                 tranId: result.getValue({ name: 'tranid' }) || '',
                 quantity: parseFloat(result.getValue({ name: 'quantity' })) || 0,
                 startDateIso: result.getValue({ name: 'startdate' }),
-                endDateIso: result.getValue({ name: 'enddate' })
+                endDateIso: result.getValue({ name: 'enddate' }),
+                // Demande utilisateur : pour les OF réels, on reprend telle
+                // quelle la valeur affichée du statut NetSuite, pas de
+                // dérivation.
+                statusText: result.getText({ name: 'status' }) || ''
             });
             return rows.length < MAX_RESULTS_PER_SEARCH;
         });
