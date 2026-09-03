@@ -137,8 +137,8 @@ Action `validate_pall` :
 |---|---|
 | Type | **Submit Form** |
 | HTTP Method | POST |
-| Script ID | `customscript_ax_wms_test` (à renommer) |
-| Deployment ID | `customdeploy_ax_wms_test` (à renommer) |
+| Script ID | `customscript_ax_wms_rl_decaissage` (renommé depuis `customscript_ax_wms_test`, constaté 2026-08-14) |
+| Deployment ID | `customdeploy_ax_wms_rl_decaissage` |
 | Convert Response To Object | coché |
 | Loading Text | Dépallétisation en cours… |
 
@@ -331,10 +331,9 @@ reste à appliquer manuellement — voir section 4.2.
       vers l'Inventory Adjustment, qui relie déjà l'ancien lot (ligne de sortie) et
       les nouveaux (ligne d'entrée) dans ses deux lignes. Pas de champ de
       traçabilité séparé jugé nécessaire.
-- [ ] **Renommer le script et le déploiement** (`customscript_ax_wms_test` →
-      nom définitif) et mettre à jour l'action mobile en conséquence. Non fait :
-      la config WMS Mobile en prod référence l'id actuel, à traiter séparément
-      (créer le nouveau script/déploiement, republier l'action, retirer l'ancien).
+- [x] **Renommer le script et le déploiement** — fait : `customscript_ax_wms_rl_decaissage`
+      / `customdeploy_ax_wms_rl_decaissage` (constaté 2026-08-14 sur la fiche de
+      l'action `validate_pall`).
 
 ### Priorité moyenne
 
