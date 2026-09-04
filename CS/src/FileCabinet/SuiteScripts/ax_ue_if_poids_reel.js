@@ -25,12 +25,10 @@
  *   5. Recalcule le montant de la ligne de commande :
  *      amount = poids_reel_livre (cumulé) * prix_kg (dérivé ci-dessus).
  *
- * Point non vérifié (à tester sur sandbox) : le champ de LECTURE des
- * numéros de lot déjà assignés sur une sous-liste inventorydetail d'une
- * ligne d'Item Fulfillment. `issueinventorynumber`/`receiptinventorynumber`
- * sont des champs d'ÉCRITURE uniquement (confirmé sur plannedorder/
- * inventory adjustment, voir ax_wms_rl_decaissage.js) - `inventorynumber`
- * est tenté ici comme champ de lecture, avec repli diagnostique si vide.
+ * Confirmé sur sandbox (2026-09-04) : le champ de LECTURE des numéros de
+ * lot déjà assignés sur une ligne d'Item Fulfillment est
+ * `issueinventorynumber` (texte), pas `inventorynumber` - voir le
+ * commentaire de getLotNumbersForLine.
  *
  * Champs requis :
  *  Article  : custitem_ax_weight_invoicing (Check Box, existant)
@@ -149,44 +147,28 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
     // enregistrée. Diagnostic explicite si le champ de lecture supposé
     // ('inventorynumber') ne renvoie rien alors que des lignes existent -
     // pour corriger sans deviner à nouveau.
+    // Confirmé sur sandbox (2026-09-04) : sur une ligne d'Item Fulfillment
+    // déjà enregistrée, le numéro de lot assigné se lit via
+    // `issueinventorynumber` (texte = numéro de lot, ex. "2621740924") -
+    // pas `inventorynumber`. Logique a posteriori : une livraison est un
+    // mouvement sortant, donc c'est le champ "issue" qui porte la donnée
+    // persistée (contrairement à un Inventory Adjustment, où les deux
+    // champs issue/receipt ne servent qu'à l'écriture - voir
+    // ax_wms_rl_decaissage.js).
     function getLotNumbersForLine(fulfillment, lineIndex) {
         var lots = [];
         try {
             var detail = fulfillment.getSublistSubrecord({ sublistId: 'item', fieldId: 'inventorydetail', line: lineIndex });
             var n = detail.getLineCount({ sublistId: 'inventoryassignment' });
             for (var j = 0; j < n; j++) {
-                var lotText = detail.getSublistText({ sublistId: 'inventoryassignment', fieldId: 'inventorynumber', line: j })
-                    || detail.getSublistValue({ sublistId: 'inventoryassignment', fieldId: 'inventorynumber', line: j });
+                var lotText = detail.getSublistText({ sublistId: 'inventoryassignment', fieldId: 'issueinventorynumber', line: j });
                 if (lotText) {
                     lots.push(lotText);
                 }
             }
             if (n && !lots.length) {
-                log.audit('getLotNumbersForLine', 'ligne ' + lineIndex + ' : ' + n + ' assignation(s) mais aucun texte lu via '
-                    + '"inventorynumber" - champ de lecture probablement différent, à vérifier sur sandbox.');
-                // Diagnostic : liste les champs réellement disponibles sur
-                // cette sous-liste plutôt que de deviner un nouveau nom à
-                // l'aveugle (même technique que pour la sous-liste
-                // "component" de BOM Revision dans PlanifArbitrage).
-                try {
-                    log.audit('getLotNumbersForLine - champs disponibles sur inventoryassignment',
-                        JSON.stringify(detail.getSublistFields({ sublistId: 'inventoryassignment' })));
-                } catch (e2) {
-                    log.error('getLotNumbersForLine - diagnostic échoué', e2.message);
-                }
-                // Journalise aussi la valeur brute de chaque champ candidat
-                // plausible pour la première ligne, pour voir directement
-                // où se trouve la donnée sans attendre un second essai.
-                var candidates = ['issueinventorynumber', 'receiptinventorynumber', 'serialnumbers', 'lotnumber'];
-                candidates.forEach(function (fieldId) {
-                    try {
-                        var v = detail.getSublistValue({ sublistId: 'inventoryassignment', fieldId: fieldId, line: 0 });
-                        var t = detail.getSublistText({ sublistId: 'inventoryassignment', fieldId: fieldId, line: 0 });
-                        log.audit('getLotNumbersForLine - candidat ' + fieldId, 'value=' + v + ' text=' + t);
-                    } catch (e3) {
-                        log.debug('getLotNumbersForLine - candidat ' + fieldId + ' invalide', e3.message);
-                    }
-                });
+                log.error('getLotNumbersForLine', 'ligne ' + lineIndex + ' : ' + n + ' assignation(s) mais aucun texte lu via '
+                    + '"issueinventorynumber" - à réinvestiguer.');
             }
         } catch (e) {
             log.error('getLotNumbersForLine', 'ligne ' + lineIndex + ' : ' + e.message);
