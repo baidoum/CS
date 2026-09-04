@@ -48,6 +48,12 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
     var SO_PRICE_PER_KG_FIELD = 'custcol_ax_prix_kg';
 
     function afterSubmit(context) {
+        // Log systématique dès l'entrée, avant tout retour anticipé - sans
+        // ça, un contexte non CREATE ou une livraison sans article
+        // concerné sortait sans laisser aucune trace, impossible à
+        // distinguer d'un script qui ne se déclenche pas du tout.
+        log.audit('ax_ue_if_poids_reel - entrée', 'type=' + context.type + ' id=' + context.newRecord.id);
+
         if (context.type !== context.UserEventType.CREATE) {
             return;
         }
@@ -105,6 +111,9 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
 
             if (Object.keys(weightBySoLine).length) {
                 applyToSalesOrder(createdFromId, weightBySoLine);
+            } else {
+                log.audit('ax_ue_if_poids_reel', 'Livraison ' + fulfillment.id
+                    + ' : aucune ligne à facturation au poids réel avec des lots exploitables - rien à mettre à jour.');
             }
 
         } catch (e) {
