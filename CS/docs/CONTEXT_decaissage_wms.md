@@ -37,8 +37,12 @@ Le besoin sort donc du natif et a nécessité un parti pris de modélisation.
   chaque enregistrement porte un **sous-lot réel** avec ses attributs (vrai numéro
   de lot de production, date de péremption, poids net/brut, SSCC, ligne de
   conditionnement…)
-- Chaque ALD conserve le lien sous-lot réel ↔ PALLET ID via
-  `custrecord_lots_inventorynumber`
+- Chaque ALD conserve le lien sous-lot réel ↔ lot rattaché via
+  `custrecord_lots_inventorynumber` - initialement le PALLET ID, **mis à jour par le
+  décaissage** (2026-09-04) pour pointer vers le nouveau lot colis qu'il représente
+  désormais, une fois celui-ci créé. L'ALD reste ainsi auto-cohérent : après
+  décaissage, `custrecord_lots_lotnumber` (texte) et `custrecord_lots_inventorynumber`
+  (référence) désignent le même lot colis.
 
 ### Règles de gestion associées
 
@@ -325,12 +329,17 @@ reste à appliquer manuellement — voir section 4.2.
 
 - [x] **Archivage des ALD décaissés** — champs `custrecord_lots_decaisse` /
       `_decaisse_date` / `_decaisse_adjustment` (voir section 8), posés par
-      `marquerALDDecaisses()`. **Champs à créer dans NetSuite avant déploiement**,
-      pas encore fait à ce stade (2026-08-14).
+      `marquerALDDecaisses()`. Champs créés et testés en conditions réelles
+      (confirmé fonctionnel 2026-09-04).
 - [x] **Traçabilité du décaissage** — `custrecord_lots_decaisse_adjustment` pointe
       vers l'Inventory Adjustment, qui relie déjà l'ancien lot (ligne de sortie) et
-      les nouveaux (ligne d'entrée) dans ses deux lignes. Pas de champ de
-      traçabilité séparé jugé nécessaire.
+      les nouveaux (ligne d'entrée) dans ses deux lignes. En complément
+      (2026-09-04) : `custrecord_lots_inventorynumber` de l'ALD est désormais
+      mis à jour pour pointer vers le nouveau lot colis qu'il représente,
+      au lieu de rester sur le lot palette d'origine - utile notamment pour
+      le développement "Facturation au poids réel"
+      (`ax_ue_if_poids_reel.js`), qui peut ainsi retrouver un colis
+      directement par cette référence en plus du texte de lot.
 - [x] **Renommer le script et le déploiement** — fait : `customscript_ax_wms_rl_decaissage`
       / `customdeploy_ax_wms_rl_decaissage` (constaté 2026-08-14 sur la fiche de
       l'action `validate_pall`).
@@ -369,7 +378,7 @@ Champs utilisés par le décaissage :
 
 | Champ | Usage |
 |---|---|
-| `custrecord_lots_inventorynumber` | Lien vers le numéro de lot palette (clé de rattachement) |
+| `custrecord_lots_inventorynumber` | Lien vers le lot rattaché - le lot palette avant décaissage, **mis à jour vers le nouveau lot colis par le décaissage** (voir section 1) |
 | `custrecord_lots_lotnumber` | **Vrai numéro de lot** → devient le numéro de lot du sous-lot créé |
 | `custrecord_lots_netquantity` | Quantité du sous-lot |
 | `custrecord_lots_expirationdate` | Date de péremption du sous-lot (format `DD/MM/YYYY`) |

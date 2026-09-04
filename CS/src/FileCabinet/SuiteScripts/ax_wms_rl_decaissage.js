@@ -317,22 +317,59 @@ function (record, search, query, runtime, log) {
         return { adjId: adjId, totalIn: totalIn, aldsTraites: aldsTraites };
     }
 
+    // Retrouve l'internal id du NOUVEAU numéro de lot (colis) créé par la
+    // ligne d'entrée de l'ajustement (receiptinventorynumber, posé par
+    // texte - NetSuite résout/crée l'inventorynumber correspondant, sans
+    // exposer son id directement). Même schéma de jointure que
+    // trouverStockPalette (déjà confirmé sur ce compte), pour ne pas
+    // deviner un nouveau nom de colonne.
+    function resolveNewInventoryNumberId(itemId, lotNum) {
+        try {
+            var sql = 'SELECT inv.id AS id ' +
+                'FROM inventorynumber inv ' +
+                'INNER JOIN inventorybalance bal ON bal.inventorynumber = inv.id ' +
+                'WHERE inv.inventorynumber = ? AND bal.item = ?';
+            var rows = query.runSuiteQL({ query: sql, params: [lotNum, itemId] }).asMappedResults();
+            if (rows.length) {
+                return String(rows[0].id);
+            }
+        } catch (e) {
+            log.error('resolveNewInventoryNumberId', 'itemId=' + itemId + ' lotNum=' + lotNum + ' : ' + e.message);
+        }
+        return null;
+    }
+
     // Marque les ALD effectivement traités comme décaissés - archivage +
-    // traçabilité (voir CONTEXT_decaissage_wms.md section 1). N'échoue pas
-    // le décaissage si une mise à jour individuelle échoue : l'ajustement
-    // est déjà enregistré à ce stade, c'est irréversible depuis ce point.
-    function marquerALDDecaisses(alds, adjId) {
+    // traçabilité (voir CONTEXT_decaissage_wms.md section 1). Met aussi à
+    // jour custrecord_lots_inventorynumber pour qu'il pointe désormais vers
+    // le NOUVEAU lot colis (jusqu'ici il restait rattaché au lot palette
+    // d'origine) - l'ALD devient ainsi auto-cohérent : son propre numéro de
+    // lot et sa référence d'inventaire désignent la même chose après
+    // décaissage. N'échoue pas le décaissage si une mise à jour
+    // individuelle échoue : l'ajustement est déjà enregistré à ce stade,
+    // c'est irréversible depuis ce point.
+    function marquerALDDecaisses(alds, adjId, itemId) {
         var maintenant = new Date();
         alds.forEach(function (ald) {
             try {
+                var values = {
+                    custrecord_lots_decaisse: true,
+                    custrecord_lots_decaisse_date: maintenant,
+                    custrecord_lots_decaisse_adjustment: String(adjId)
+                };
+
+                var newInvNumId = resolveNewInventoryNumberId(itemId, ald.lotNum);
+                if (newInvNumId) {
+                    values.custrecord_lots_inventorynumber = newInvNumId;
+                } else {
+                    log.error('marquerALDDecaisses', 'ALD ' + ald.id + ' : nouveau lot "' + ald.lotNum
+                        + '" introuvable après création - custrecord_lots_inventorynumber non mis à jour, à investiguer.');
+                }
+
                 record.submitFields({
                     type: 'customrecord_additionallotdetails',
                     id: ald.id,
-                    values: {
-                        custrecord_lots_decaisse: true,
-                        custrecord_lots_decaisse_date: maintenant,
-                        custrecord_lots_decaisse_adjustment: String(adjId)
-                    },
+                    values: values,
                     options: { enablesourcing: false, ignoreMandatoryFields: true }
                 });
             } catch (e) {
@@ -392,7 +429,7 @@ function (record, search, query, runtime, log) {
             }
 
             var res = creerAjustement(stock, alds, validation.totalIn);
-            marquerALDDecaisses(res.aldsTraites, res.adjId);
+            marquerALDDecaisses(res.aldsTraites, res.adjId, stock.itemId);
 
             return {
                 success: true,
