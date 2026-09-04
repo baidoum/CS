@@ -155,7 +155,8 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
             var detail = fulfillment.getSublistSubrecord({ sublistId: 'item', fieldId: 'inventorydetail', line: lineIndex });
             var n = detail.getLineCount({ sublistId: 'inventoryassignment' });
             for (var j = 0; j < n; j++) {
-                var lotText = detail.getSublistText({ sublistId: 'inventoryassignment', fieldId: 'inventorynumber', line: j });
+                var lotText = detail.getSublistText({ sublistId: 'inventoryassignment', fieldId: 'inventorynumber', line: j })
+                    || detail.getSublistValue({ sublistId: 'inventoryassignment', fieldId: 'inventorynumber', line: j });
                 if (lotText) {
                     lots.push(lotText);
                 }
@@ -163,6 +164,29 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
             if (n && !lots.length) {
                 log.audit('getLotNumbersForLine', 'ligne ' + lineIndex + ' : ' + n + ' assignation(s) mais aucun texte lu via '
                     + '"inventorynumber" - champ de lecture probablement différent, à vérifier sur sandbox.');
+                // Diagnostic : liste les champs réellement disponibles sur
+                // cette sous-liste plutôt que de deviner un nouveau nom à
+                // l'aveugle (même technique que pour la sous-liste
+                // "component" de BOM Revision dans PlanifArbitrage).
+                try {
+                    log.audit('getLotNumbersForLine - champs disponibles sur inventoryassignment',
+                        JSON.stringify(detail.getSublistFields({ sublistId: 'inventoryassignment' })));
+                } catch (e2) {
+                    log.error('getLotNumbersForLine - diagnostic échoué', e2.message);
+                }
+                // Journalise aussi la valeur brute de chaque champ candidat
+                // plausible pour la première ligne, pour voir directement
+                // où se trouve la donnée sans attendre un second essai.
+                var candidates = ['issueinventorynumber', 'receiptinventorynumber', 'serialnumbers', 'lotnumber'];
+                candidates.forEach(function (fieldId) {
+                    try {
+                        var v = detail.getSublistValue({ sublistId: 'inventoryassignment', fieldId: fieldId, line: 0 });
+                        var t = detail.getSublistText({ sublistId: 'inventoryassignment', fieldId: fieldId, line: 0 });
+                        log.audit('getLotNumbersForLine - candidat ' + fieldId, 'value=' + v + ' text=' + t);
+                    } catch (e3) {
+                        log.debug('getLotNumbersForLine - candidat ' + fieldId + ' invalide', e3.message);
+                    }
+                });
             }
         } catch (e) {
             log.error('getLotNumbersForLine', 'ligne ' + lineIndex + ' : ' + e.message);
