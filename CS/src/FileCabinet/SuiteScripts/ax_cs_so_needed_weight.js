@@ -14,7 +14,7 @@ define(['N/search', 'N/log'], function (search, log) {
     var SUBLIST_ID = 'item';
     var WEIGHT_FIELD = 'custcol_ax_needed_weight';
     var QTY_FIELD = 'quantity';
-    var PACKAGE_WEIGHT_FIELD = 'custitem_ax_poids_colis';
+    var PACKAGE_WEIGHT_FIELD = 'weight';
 
     function fieldChanged(context) {
         if (context.sublistId !== SUBLIST_ID || context.fieldId !== WEIGHT_FIELD) {

@@ -117,7 +117,8 @@ function (record, search, query, runtime, log) {
                 'custrecord_lots_expirationdate',
                 'custrecord_lots_item',
                 'custrecord_lots_decaisse',
-                'custrecord_lots_decaisse_adjustment'
+                'custrecord_lots_decaisse_adjustment',
+                'custrecord_cwgp_lots_ssccbarcode'
             ]
         }).run().each(function (r) {
             tousLesAld.push({
@@ -127,7 +128,8 @@ function (record, search, query, runtime, log) {
                 expDate:       r.getValue({ name: 'custrecord_lots_expirationdate' }),
                 itemId:        r.getValue({ name: 'custrecord_lots_item' }) || '',
                 decaisse:      r.getValue({ name: 'custrecord_lots_decaisse' }) === true,
-                adjustmentRef: r.getValue({ name: 'custrecord_lots_decaisse_adjustment' }) || ''
+                adjustmentRef: r.getValue({ name: 'custrecord_lots_decaisse_adjustment' }) || '',
+                ssccBarcode:   r.getValue({ name: 'custrecord_cwgp_lots_ssccbarcode' }) || ''
             });
             return true;
         });
@@ -361,6 +363,20 @@ function (record, search, query, runtime, log) {
                 var newInvNumId = resolveNewInventoryNumberId(itemId, ald.lotNum);
                 if (newInvNumId) {
                     values.custrecord_lots_inventorynumber = newInvNumId;
+
+                    if (ald.ssccBarcode) {
+                        try {
+                            record.submitFields({
+                                type: 'inventorynumber',
+                                id: newInvNumId,
+                                values: { custitemnumber_cwgp_ssccbarcode: ald.ssccBarcode },
+                                options: { enablesourcing: false, ignoreMandatoryFields: true }
+                            });
+                        } catch (eSscc) {
+                            log.error('marquerALDDecaisses', 'ALD ' + ald.id + ' : échec report SSCC "' + ald.ssccBarcode
+                                + '" sur le lot ' + newInvNumId + ' : ' + eSscc.message);
+                        }
+                    }
                 } else {
                     log.error('marquerALDDecaisses', 'ALD ' + ald.id + ' : nouveau lot "' + ald.lotNum
                         + '" introuvable après création - custrecord_lots_inventorynumber non mis à jour, à investiguer.');
