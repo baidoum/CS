@@ -39,7 +39,7 @@
 define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
 
     var ITEM_REAL_WEIGHT_FLAG = 'custitem_ax_weight_invoicing';
-    var ITEM_PACKAGE_WEIGHT_FIELD = 'custitem_ax_poids_colis';
+    var ITEM_PACKAGE_WEIGHT_FIELD = 'weight';
     var ALD_LOTNUMBER_FIELD = 'custrecord_lots_lotnumber';
     var ALD_INVENTORYNUMBER_FIELD = 'custrecord_lots_inventorynumber';
     var ALD_NETWEIGHT_FIELD = 'custrecord_lots_netweight';
