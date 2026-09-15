@@ -253,19 +253,23 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
     // Ouvre la commande une seule fois, applique tous les incréments de
     // poids par ligne, recalcule prix/montant, sauvegarde une seule fois.
     //
-    // Point non vérifié : le format exact de `orderline` (numéro de ligne
-    // 1-based côté commande, ou lineuniquekey) - traité ici comme un index
-    // de ligne 1-based, à confirmer sur sandbox.
+    // Confirmé en prod (2026-09-15, log ligne orderline=26 hors limites
+    // sur une commande à 1 seule ligne) : `orderline` N'EST PAS un index
+    // de ligne 1-based - c'est l'id interne unique de ligne côté
+    // transaction source (champ standard `line`), qui ne redémarre pas à 1
+    // et peut dépasser le nombre de lignes actuelles. Recherche de la
+    // ligne via ce champ plutôt qu'un calcul d'index.
     function applyToSalesOrder(soId, weightBySoLine) {
         try {
             var so = record.load({ type: record.Type.SALES_ORDER, id: soId, isDynamic: false });
-            var n = so.getLineCount({ sublistId: 'item' });
 
             Object.keys(weightBySoLine).forEach(function (soLineKey) {
-                var lineIndex = parseInt(soLineKey, 10) - 1; // orderline supposé 1-based
-                if (isNaN(lineIndex) || lineIndex < 0 || lineIndex >= n) {
-                    log.error('applyToSalesOrder', 'Commande ' + soId + ' : ligne orderline=' + soLineKey
-                        + ' hors limites (nb lignes=' + n + ') - increment ignoré, à vérifier.');
+                var lineIndex = so.findSublistLineWithValue({
+                    sublistId: 'item', fieldId: 'line', value: parseInt(soLineKey, 10)
+                });
+                if (lineIndex < 0) {
+                    log.error('applyToSalesOrder', 'Commande ' + soId + ' : aucune ligne avec line=' + soLineKey
+                        + ' - increment ignoré, à vérifier.');
                     return;
                 }
 
