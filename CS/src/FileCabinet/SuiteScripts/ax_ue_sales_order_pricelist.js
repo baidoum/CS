@@ -33,9 +33,11 @@
  *       -> si un tarif custom avait ete applique sur cette ligne lors d'une
  *          precedente sauvegarde (custcol_ax_pricelist_applied = true,
  *          typiquement apres un changement de shipdate qui invalide le
- *          tarif retenu), le rate est vide pour laisser le moteur de
- *          pricing standard NetSuite (item + price level + quantite) le
- *          recalculer a la sauvegarde, et le flag est retire
+ *          tarif retenu), le flag est retire et la ligne est signalee dans
+ *          custbody_ax_lines_to_reprice pour un repricing standard fait en
+ *          afterSubmit (voir commentaire de la fonction) - impossible a
+ *          faire directement ici, le moteur de pricing standard NetSuite
+ *          ne se redeclenche qu'en mode dynamique
  *       -> sinon (rate deja standard ou saisie manuelle, jamais touche par
  *          ce script) on ne touche a rien
  *     pas d'anomalie dans les deux cas (rien a comparer)
@@ -59,7 +61,7 @@
  *   Evenements    : Create, Edit
  *   Execute as    : Administrator
  */
-define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
+define(['N/record', 'N/search', 'N/format', 'N/log'], (record, search, format, log) => {
 
     const PRICELIST_RECORD = 'customrecord_ax_cust_pricelist';
     const FLD_DATE_FROM    = 'custrecord_ax_cust_price_datefrom';
@@ -69,6 +71,7 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
     const FLD_ALERT_LIMIT  = 'custrecord_ax_aler_limit';
 
     const BODY_ERROR_FIELD = 'custbody_ax_error_updating_price';
+    const BODY_LINES_TO_REPRICE = 'custbody_ax_lines_to_reprice';
     const COL_PRICELIST_APPLIED = 'custcol_ax_pricelist_applied';
 
     /**
@@ -132,12 +135,17 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
                 return;
             }
 
-            // 5. Application ligne par ligne + collecte des anomalies
+            // 5. Application ligne par ligne + collecte des anomalies et des
+            // lignes necessitant un repricing standard (cf. applyPriceToLine)
             const anomalies = [];
+            const linesToReprice = [];
             for (let i = 0; i < lineCount; i++) {
-                const anomaly = applyPriceToLine(newRecord, i, candidates, shipDate, customerPriceLevelText);
-                if (anomaly) {
-                    anomalies.push(anomaly);
+                const outcome = applyPriceToLine(newRecord, i, candidates, shipDate, customerPriceLevelText);
+                if (outcome.anomaly) {
+                    anomalies.push(outcome.anomaly);
+                }
+                if (outcome.repriceLineId !== null) {
+                    linesToReprice.push(outcome.repriceLineId);
                 }
             }
 
@@ -156,11 +164,95 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
                 }
             }
 
+            // 7. Reconstruction complete du marqueur de lignes a repricer -
+            // consomme par afterSubmit (repricing standard en mode
+            // dynamique, cf. commentaire au-dessus de afterSubmit)
+            newRecord.setValue({
+                fieldId: BODY_LINES_TO_REPRICE,
+                value: linesToReprice.length ? JSON.stringify(linesToReprice) : ''
+            });
+
         } catch (e) {
             log.error({
                 title: 'AX Pricelist - beforeSubmit error',
                 details: e
             });
+        }
+    };
+
+    // Repricing standard des lignes dont le tarif custom ne matche plus
+    // (typiquement apres un changement de shipdate qui invalide le tarif
+    // retenu au precedent enregistrement). Ne peut pas se faire en
+    // beforeSubmit : le moteur de pricing standard NetSuite (item + price
+    // level + quantite) ne se redeclenche que sur un enregistrement en
+    // mode DYNAMIQUE dont on retouche un champ declencheur (quantity) -
+    // impossible sur newRecord en beforeSubmit (mode standard, pas encore
+    // sauvegarde). D'ou ce second passage : recharge la commande en
+    // dynamique, retouche quantity sur les lignes signalees pour forcer le
+    // recalcul de rate/amount, puis resauvegarde.
+    //
+    // Anti-boucle : ce save() redeclenche beforeSubmit/afterSubmit sur la
+    // meme commande, mais custcol_ax_pricelist_applied a deja ete remis a
+    // false lors du premier passage - le second passage de beforeSubmit ne
+    // trouvera donc plus rien a repricer et videra BODY_LINES_TO_REPRICE,
+    // ce qui arrete la recursion (un seul aller-retour).
+    const afterSubmit = (context) => {
+        try {
+            if (context.type !== context.UserEventType.CREATE
+                && context.type !== context.UserEventType.EDIT) {
+                return;
+            }
+
+            const raw = context.newRecord.getValue({ fieldId: BODY_LINES_TO_REPRICE });
+            if (!raw) {
+                return;
+            }
+
+            let lineIds;
+            try {
+                lineIds = JSON.parse(raw);
+            } catch (e) {
+                log.error({ title: 'AX Pricelist - afterSubmit JSON parse error', details: e });
+                return;
+            }
+            if (!Array.isArray(lineIds) || !lineIds.length) {
+                return;
+            }
+
+            const so = record.load({
+                type: record.Type.SALES_ORDER,
+                id: context.newRecord.id,
+                isDynamic: true
+            });
+
+            lineIds.forEach((lineId) => {
+                const lineIndex = so.findSublistLineWithValue({
+                    sublistId: 'item', fieldId: 'line', value: lineId
+                });
+                if (lineIndex < 0) {
+                    log.error('AX Pricelist - afterSubmit', 'Ligne id ' + lineId
+                        + ' introuvable pour repricing standard (SO ' + context.newRecord.id + ').');
+                    return;
+                }
+
+                so.selectLine({ sublistId: 'item', line: lineIndex });
+                const qty = so.getCurrentSublistValue({ sublistId: 'item', fieldId: 'quantity' });
+                // Re-ecrire la quantite sur elle-meme force NetSuite a
+                // resourcer rate/amount depuis la matrice de prix standard
+                // de l'article (price level + quantite) - c'est le seul
+                // declencheur disponible en mode dynamique.
+                so.setCurrentSublistValue({ sublistId: 'item', fieldId: 'quantity', value: qty });
+                so.commitLine({ sublistId: 'item' });
+            });
+
+            so.setValue({ fieldId: BODY_LINES_TO_REPRICE, value: '' });
+            so.save();
+
+            log.audit('AX Pricelist - afterSubmit', 'Repricing standard applique sur '
+                + lineIds.length + ' ligne(s), SO ' + context.newRecord.id);
+
+        } catch (e) {
+            log.error({ title: 'AX Pricelist - afterSubmit error', details: e });
         }
     };
 
@@ -244,19 +336,21 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
 
     /**
      * Trouve le meilleur candidat pour une ligne donnee.
-     * - Si l'ecart est dans le seuil -> applique le rate, retourne null
-     * - Si l'ecart depasse le seuil -> ne touche pas au rate, retourne
-     *   un objet anomalie a tracer dans le champ body
-     * - Si aucun candidat -> ne fait rien, retourne null
+     * Retourne toujours { anomaly, repriceLineId } :
+     * - anomaly non-null si l'ecart depasse le seuil (rate non touche)
+     * - repriceLineId non-null si un tarif custom precedemment applique
+     *   ne matche plus - a repricer en standard via afterSubmit
      */
     function applyPriceToLine(newRecord, lineIndex, candidates, shipDate, customerPriceLevelText) {
+        const noop = { anomaly: null, repriceLineId: null };
+
         const itemId = newRecord.getSublistValue({
             sublistId: 'item',
             fieldId: 'item',
             line: lineIndex
         });
         if (!itemId) {
-            return null;
+            return noop;
         }
 
         const itemIdStr = itemId.toString();
@@ -277,9 +371,12 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
             // applique par ce script lors d'une precedente sauvegarde
             // (flag COL_PRICELIST_APPLIED), le rate present sur la ligne
             // est un residu de ce precedent passage - pas le prix standard
-            // NetSuite. On vide le rate pour que le moteur de pricing
-            // standard (item + price level + quantite) le recalcule a la
-            // sauvegarde, et on retire le flag. Si le flag n'etait pas
+            // NetSuite. On ne le touche pas ici (vider rate en beforeSubmit
+            // casse la validation "Amount obligatoire" - le moteur de
+            // pricing standard ne se redeclenche pas sur une simple
+            // ecriture en mode standard) : on retire juste le flag et on
+            // signale la ligne pour repricing standard en afterSubmit (mode
+            // dynamique, seul declencheur possible). Si le flag n'etait pas
             // pose, le rate courant est deja le standard (ou une saisie
             // manuelle) - on n'y touche pas.
             const wasApplied = newRecord.getSublistValue({
@@ -288,10 +385,11 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
                 line: lineIndex
             });
             if (wasApplied === true) {
-                newRecord.setSublistValue({ sublistId: 'item', fieldId: 'rate', line: lineIndex, value: '' });
                 newRecord.setSublistValue({ sublistId: 'item', fieldId: COL_PRICELIST_APPLIED, line: lineIndex, value: false });
+                const lineId = newRecord.getSublistValue({ sublistId: 'item', fieldId: 'line', line: lineIndex });
+                return { anomaly: null, repriceLineId: lineId };
             }
-            return null;
+            return noop;
         }
 
         // Ancien tarif = rate deja present sur la ligne avant notre intervention
@@ -322,17 +420,20 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
         if (exceeds) {
             // On bloque uniquement la mise a jour du rate de cette ligne
             return {
-                line: lineIndex + 1,
-                item: newRecord.getSublistText({
-                    sublistId: 'item',
-                    fieldId: 'item',
-                    line: lineIndex
-                }),
-                priceLevel: customerPriceLevelText,
-                oldRate: oldRate,
-                newRate: newRate,
-                variance: variance === null ? null : Math.round(variance * 100) / 100,
-                threshold: best.alertLimit
+                anomaly: {
+                    line: lineIndex + 1,
+                    item: newRecord.getSublistText({
+                        sublistId: 'item',
+                        fieldId: 'item',
+                        line: lineIndex
+                    }),
+                    priceLevel: customerPriceLevelText,
+                    oldRate: oldRate,
+                    newRate: newRate,
+                    variance: variance === null ? null : Math.round(variance * 100) / 100,
+                    threshold: best.alertLimit
+                },
+                repriceLineId: null
             };
         }
 
@@ -352,7 +453,7 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
             value: true
         });
 
-        return null;
+        return noop;
     }
 
     /**
@@ -374,5 +475,5 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
         }
     }
 
-    return { beforeSubmit };
+    return { beforeSubmit, afterSubmit };
 });
