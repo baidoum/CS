@@ -29,8 +29,16 @@
  *          Date From est la plus proche de la Ship Date (max)
  *   - Si aucun shipdate sur la commande -> on ne fait rien du tout
  *   - Si le client n'a pas de price level par defaut -> on ne fait rien du tout
- *   - Si aucun record ne correspond a une ligne -> on ne touche pas au rate,
- *     pas d'anomalie non plus (rien a comparer)
+ *   - Si aucun record ne correspond a une ligne :
+ *       -> si un tarif custom avait ete applique sur cette ligne lors d'une
+ *          precedente sauvegarde (custcol_ax_pricelist_applied = true,
+ *          typiquement apres un changement de shipdate qui invalide le
+ *          tarif retenu), le rate est vide pour laisser le moteur de
+ *          pricing standard NetSuite (item + price level + quantite) le
+ *          recalculer a la sauvegarde, et le flag est retire
+ *       -> sinon (rate deja standard ou saisie manuelle, jamais touche par
+ *          ce script) on ne touche a rien
+ *     pas d'anomalie dans les deux cas (rien a comparer)
  *
  * Regle de controle des variances :
  *   - ancien tarif = rate de la ligne AVANT que ce script n'intervienne
@@ -61,6 +69,7 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
     const FLD_ALERT_LIMIT  = 'custrecord_ax_aler_limit';
 
     const BODY_ERROR_FIELD = 'custbody_ax_error_updating_price';
+    const COL_PRICELIST_APPLIED = 'custcol_ax_pricelist_applied';
 
     /**
      * Point d'entree beforeSubmit
@@ -264,7 +273,24 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
         }
 
         if (!best) {
-            // Aucun tarif custom applicable -> on ne touche pas au rate standard
+            // Aucun tarif custom applicable. Si un tarif custom avait ete
+            // applique par ce script lors d'une precedente sauvegarde
+            // (flag COL_PRICELIST_APPLIED), le rate present sur la ligne
+            // est un residu de ce precedent passage - pas le prix standard
+            // NetSuite. On vide le rate pour que le moteur de pricing
+            // standard (item + price level + quantite) le recalcule a la
+            // sauvegarde, et on retire le flag. Si le flag n'etait pas
+            // pose, le rate courant est deja le standard (ou une saisie
+            // manuelle) - on n'y touche pas.
+            const wasApplied = newRecord.getSublistValue({
+                sublistId: 'item',
+                fieldId: COL_PRICELIST_APPLIED,
+                line: lineIndex
+            });
+            if (wasApplied === true) {
+                newRecord.setSublistValue({ sublistId: 'item', fieldId: 'rate', line: lineIndex, value: '' });
+                newRecord.setSublistValue({ sublistId: 'item', fieldId: COL_PRICELIST_APPLIED, line: lineIndex, value: false });
+            }
             return null;
         }
 
@@ -310,12 +336,20 @@ define(['N/search', 'N/format', 'N/log'], (search, format, log) => {
             };
         }
 
-        // Pas d'anomalie -> on applique normalement le nouveau tarif
+        // Pas d'anomalie -> on applique normalement le nouveau tarif, et on
+        // pose le flag pour pouvoir rendre la main au moteur standard si ce
+        // tarif custom ne matche plus lors d'une future sauvegarde.
         newRecord.setSublistValue({
             sublistId: 'item',
             fieldId: 'rate',
             line: lineIndex,
             value: newRate
+        });
+        newRecord.setSublistValue({
+            sublistId: 'item',
+            fieldId: COL_PRICELIST_APPLIED,
+            line: lineIndex,
+            value: true
         });
 
         return null;
