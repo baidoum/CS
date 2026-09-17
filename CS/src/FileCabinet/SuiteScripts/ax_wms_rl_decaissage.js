@@ -27,6 +27,12 @@
  *  custrecord_lots_decaisse            (Check Box)
  *  custrecord_lots_decaisse_date       (Date/Time)
  *  custrecord_lots_decaisse_adjustment (List/Record -> Transaction, lien vers l'ajustement)
+ *
+ * Numéro du nouveau lot colis : custrecord_cwgp_lots_ssccbarcode (SSCC
+ * barcode de l'ALD) - remplace custrecord_lots_lotnumber, retiré. Champ
+ * garanti renseigné sur tout ALD actif (pas de repli). Recopié tel quel
+ * dans custitemnumber_cwgp_ssccbarcode sur le nouveau numéro de lot créé
+ * (record 'inventorynumber') - voir marquerALDDecaisses.
  */
 define(['N/record', 'N/search', 'N/query', 'N/runtime', 'N/log'],
 function (record, search, query, runtime, log) {
@@ -112,7 +118,6 @@ function (record, search, query, runtime, log) {
             ],
             columns: [
                 'internalid',
-                'custrecord_lots_lotnumber',
                 'custrecord_lots_netquantity',
                 'custrecord_lots_expirationdate',
                 'custrecord_lots_item',
@@ -121,15 +126,20 @@ function (record, search, query, runtime, log) {
                 'custrecord_cwgp_lots_ssccbarcode'
             ]
         }).run().each(function (r) {
+            // Numero du nouveau lot colis = SSCC barcode
+            // (custrecord_cwgp_lots_ssccbarcode), plus custrecord_lots_lotnumber
+            // (retire) - champ garanti renseigne sur tout ALD actif, pas de
+            // repli necessaire.
+            var sscc = r.getValue({ name: 'custrecord_cwgp_lots_ssccbarcode' }) || '';
             tousLesAld.push({
                 id:            r.getValue({ name: 'internalid' }),
-                lotNum:        r.getValue({ name: 'custrecord_lots_lotnumber' }),
+                lotNum:        sscc,
                 qty:           parseFloat(r.getValue({ name: 'custrecord_lots_netquantity' })) || 0,
                 expDate:       r.getValue({ name: 'custrecord_lots_expirationdate' }),
                 itemId:        r.getValue({ name: 'custrecord_lots_item' }) || '',
                 decaisse:      r.getValue({ name: 'custrecord_lots_decaisse' }) === true,
                 adjustmentRef: r.getValue({ name: 'custrecord_lots_decaisse_adjustment' }) || '',
-                ssccBarcode:   r.getValue({ name: 'custrecord_cwgp_lots_ssccbarcode' }) || ''
+                ssccBarcode:   sscc
             });
             return true;
         });

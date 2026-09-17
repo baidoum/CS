@@ -187,11 +187,15 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
     // Somme du poids réel (ALD) pour une liste de lots { text, id }. Deux
     // scénarios possibles selon que la palette a été décaissée avant
     // l'expédition ou expédiée entière :
-    //   1. Lot colis (post-décaissage) : l'ALD du colis porte lui-même ce
-    //      numéro dans custrecord_lots_lotnumber (texte) - tenté en premier.
+    //   1. Lot colis (post-décaissage) : le décaissage (ax_wms_rl_decaissage.js,
+    //      marquerALDDecaisses) met a jour custrecord_lots_inventorynumber de
+    //      l'ALD colis avec l'id interne du nouveau lot cree - fiable quel que
+    //      soit le champ texte utilise pour le nommer (SSCC ou autre) - tente
+    //      en premier via l'id (lot.id).
     //   2. Palette entière expédiée sans décaissage : le lot expédié EST le
-    //      lot palette - ses ALD (un par colis contenu) le référencent via
-    //      custrecord_lots_inventorynumber (id interne, pas texte) - repli.
+    //      lot palette - ses ALD (un par colis contenu) ne le referencent PAS
+    //      par id (ils pointent chacun vers leur futur colis, pas encore créé)
+    //      mais par texte via custrecord_lots_lotnumber - repli.
     // Sécurité : si un lot ne matche NI l'un NI l'autre, la fonction le
     // signale via allFound=false plutôt que de laisser passer un 0 - à
     // l'appelant de ne rien écrire dans ce cas (jamais de montant à 0 pour
@@ -204,21 +208,7 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
             var subtotal = 0;
             var found = false;
 
-            try {
-                search.create({
-                    type: 'customrecord_additionallotdetails',
-                    filters: [[ALD_LOTNUMBER_FIELD, 'is', lot.text], 'AND', ['isinactive', 'is', 'F']],
-                    columns: [ALD_NETWEIGHT_FIELD]
-                }).run().each(function (r) {
-                    subtotal += parseFloat(r.getValue({ name: ALD_NETWEIGHT_FIELD })) || 0;
-                    found = true;
-                    return true;
-                });
-            } catch (e) {
-                log.error('sumRealWeight', 'lot=' + lot.text + ' (jointure lotnumber) : ' + e.message);
-            }
-
-            if (!found && lot.id) {
+            if (lot.id) {
                 try {
                     search.create({
                         type: 'customrecord_additionallotdetails',
@@ -229,18 +219,34 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
                         found = true;
                         return true;
                     });
+                } catch (e) {
+                    log.error('sumRealWeight', 'lot=' + lot.text + ' (jointure inventorynumber) : ' + e.message);
+                }
+            }
+
+            if (!found) {
+                try {
+                    search.create({
+                        type: 'customrecord_additionallotdetails',
+                        filters: [[ALD_LOTNUMBER_FIELD, 'is', lot.text], 'AND', ['isinactive', 'is', 'F']],
+                        columns: [ALD_NETWEIGHT_FIELD]
+                    }).run().each(function (r) {
+                        subtotal += parseFloat(r.getValue({ name: ALD_NETWEIGHT_FIELD })) || 0;
+                        found = true;
+                        return true;
+                    });
                     if (found) {
                         log.audit('sumRealWeight', 'Lot ' + lot.text + ' (id ' + lot.id + ') trouvé via repli palette entière '
-                            + '(' + ALD_INVENTORYNUMBER_FIELD + ') - pas de décaissage détecté pour ce lot.');
+                            + '(' + ALD_LOTNUMBER_FIELD + ') - pas de décaissage détecté pour ce lot.');
                     }
                 } catch (e) {
-                    log.error('sumRealWeight', 'lot=' + lot.text + ' (repli inventorynumber) : ' + e.message);
+                    log.error('sumRealWeight', 'lot=' + lot.text + ' (repli lotnumber) : ' + e.message);
                 }
             }
 
             if (!found) {
                 log.error('sumRealWeight', 'Aucun ALD trouvé pour le lot ' + lot.text + ' (id ' + lot.id + '), ni via '
-                    + ALD_LOTNUMBER_FIELD + ' ni via ' + ALD_INVENTORYNUMBER_FIELD + '.');
+                    + ALD_INVENTORYNUMBER_FIELD + ' ni via ' + ALD_LOTNUMBER_FIELD + '.');
                 allFound = false;
             } else {
                 total += subtotal;
